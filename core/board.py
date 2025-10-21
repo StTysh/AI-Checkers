@@ -28,7 +28,7 @@ class Board:
 
     def getPiece(self, row: int, col: int) -> Optional[Piece]:
         if(self._is_within_bounds(row,col)):
-            return self.board[row] [col]
+            return self.board[row][col]
         else: return None 
 
     def getAllPieces(self) -> list[Piece] :
@@ -170,7 +170,7 @@ class Board:
         white_moves = self.getAllValidMoves(Color.WHITE)
         black_moves = self.getAllValidMoves(Color.BLACK)
         if not white_moves and not black_moves:
-            return None  # Draw
+            return None  
         if not white_moves:
             return Color.BLACK
         if not black_moves:

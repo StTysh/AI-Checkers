@@ -130,13 +130,13 @@ class Man(Piece):
         else:
             capture_dirs = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
 
-        # Check simple moves (no capture)
+       
         for dr, dc in forward_dirs:
             new_r, new_c = self.row + dr, self.col + dc
             if board._is_within_bounds(new_r, new_c) and not board.getPiece(new_r, new_c):
                 moves.append([(new_r, new_c)])
 
-        # Check capturing moves (recursive multi-captures)
+        
         def dfs_captures(r, c, visited: set[tuple[int, int]]) -> list[list[tuple[int, int]]]:
             local_caps = []
             for dr, dc in capture_dirs:
@@ -161,7 +161,7 @@ class Man(Piece):
 
         captures = dfs_captures(self.row, self.col, set())
 
-        # If any captures exist, only return them (forced captures rule)
+        
         return captures if captures else moves
 
     
