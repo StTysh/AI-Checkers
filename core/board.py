@@ -1,11 +1,19 @@
-from pieces import Piece, Color, Man, King
+from __future__ import annotations
+
 from typing import Optional
 
+from .move import Move
+from .pieces import Piece, Color, Man
 
 
-class Board: 
+MoveMap = dict[Piece, list[Move]]
+
+
+class Board:
     def __init__(self, boardSize: int = 8) -> None:
-        self.board = [[None for _ in range(boardSize)] for _ in range(boardSize)]
+        self.board: list[list[Optional[Piece]]] = [
+            [None for _ in range(boardSize)] for _ in range(boardSize)
+        ]
         self.boardSize = boardSize
         self.turn = Color.WHITE
         self._set_start_pieces()
@@ -27,34 +35,34 @@ class Board:
         print()
 
     def getPiece(self, row: int, col: int) -> Optional[Piece]:
-        if(self._is_within_bounds(row,col)):
+        if self._is_within_bounds(row, col):
             return self.board[row][col]
-        else: return None 
+        return None
 
-    def getAllPieces(self) -> list[Piece] :
-        pieces = []
+    def getAllPieces(self) -> list[Piece]:
+        pieces: list[Piece] = []
         for row in range(self.boardSize):
             for col in range(self.boardSize):                
                 if (row + col) % 2 == 1:
                     piece = self.getPiece(row, col)
-                    if(piece): pieces.append(piece)
+                    if piece:
+                        pieces.append(piece)
         return pieces   
 
-    def getAllValidMoves(self, color: Color) -> dict[Piece, list[list[tuple[int, int]]]]:
-        capture_map: dict[Piece, list[list[tuple[int, int]]]] = {}
-        quiet_map: dict[Piece, list[list[tuple[int, int]]]] = {}
+    def getAllValidMoves(self, color: Color) -> MoveMap:
+        capture_map: MoveMap = {}
+        quiet_map: MoveMap = {}
 
         for piece in self.getAllPieces():
             if piece.color != color:
                 continue
-            moves = piece.possibleMoves(self)  
+            moves = piece.possibleMoves(self)
             if not moves:
                 continue
 
-            
-            caps = [p for p in moves if self._path_has_capture(p)]
-            if caps:
-                capture_map[piece] = caps
+            capture_moves = [move for move in moves if move.is_capture]
+            if capture_moves:
+                capture_map[piece] = capture_moves
             else:
                 quiet_map[piece] = moves
 
@@ -62,16 +70,26 @@ class Board:
         return capture_map if capture_map else quiet_map
 
 
-    def movePiece(self, piece: Piece, path: list[tuple[int, int]]) -> list[Piece]:
-        if not path:
-            return []
+    def movePiece(self, piece: Piece, move: Move) -> list[Piece]:
+        if not move.steps:
+            raise ValueError("Move must contain at least one destination step.")
+        if move.start != (piece.row, piece.col):
+            raise ValueError("Move start does not match piece position.")
+
+        if self.getPiece(piece.row, piece.col) is not piece:
+            raise ValueError("Piece must occupy its recorded position before moving.")
 
         old_row, old_col = piece.row, piece.col
-        captured_pieces = []
+        captured_pieces: list[Piece] = []
 
-        for (new_row, new_col) in path:
-            self.board[old_row] [old_col] = None
-            self.board[new_row] [new_col] = piece
+        for new_row, new_col in move.steps:
+            if not self._is_within_bounds(new_row, new_col):
+                raise ValueError("Move path steps must stay within the board.")
+            occupant = self.getPiece(new_row, new_col)
+            if occupant and occupant is not piece:
+                raise ValueError("Destination square must be empty.")
+            self.board[old_row][old_col] = None
+            self.board[new_row][new_col] = piece
             piece.move(new_row, new_col)
 
             step_captures = self._handle_captures(piece, old_row, old_col, new_row, new_col)
@@ -80,6 +98,17 @@ class Board:
 
             old_row, old_col = new_row, new_col
 
+        if move.is_capture and not captured_pieces:
+            raise RuntimeError("Capture move resulted in no captures.")
+        if move.is_capture and len(captured_pieces) != len(move.captures):
+            raise RuntimeError("Capture move capture count mismatch.")
+        if move.is_capture:
+            actual_coords = tuple((p.row, p.col) for p in captured_pieces)
+            if actual_coords != move.captures:
+                raise RuntimeError("Capture move capture sequence mismatch.")
+        if not move.is_capture and captured_pieces:
+            raise RuntimeError("Quiet move unexpectedly captured pieces.")
+
         promoted = self._handle_promotion(piece)
         if promoted is not piece:
             piece = promoted  
@@ -87,7 +116,7 @@ class Board:
         self.turn = Color.BLACK if self.turn == Color.WHITE else Color.WHITE
         return captured_pieces
     
-    def copy(self):
+    def copy(self) -> "Board":
         new_board = Board(self.boardSize)
         new_board.board = [[None for _ in range(self.boardSize)] for _ in range(self.boardSize)]
         new_board.turn = self.turn
@@ -95,15 +124,30 @@ class Board:
             for c in range(self.boardSize):
                 p = self.getPiece(r, c)
                 if p:
-                    new_board.board[r] [c] = p.getCopy()
+                    new_board.board[r][c] = p.getCopy()
         return new_board
 
-    def _remove_piece(self, piece: Piece):
-        if(piece and self.getPiece(piece.row,piece.col) == piece):
-            self.board[piece.row] [piece.col] = None
+    def simulateMove(self, move: Move) -> "Board":
+        board_copy = self.copy()
+        piece = board_copy.getPiece(*move.start)
+        if piece is None:
+            raise ValueError("No piece found at move start when simulating move.")
+        board_copy.movePiece(piece, move)
+        return board_copy
 
-    def _handle_captures(self, piece: Piece, old_row, old_col, new_row, new_col) -> list[Piece]:
-        captured = []
+    def _remove_piece(self, piece: Piece):
+        if piece and self.getPiece(piece.row, piece.col) == piece:
+            self.board[piece.row][piece.col] = None
+
+    def _handle_captures(
+        self,
+        piece: Piece,
+        old_row: int,
+        old_col: int,
+        new_row: int,
+        new_col: int,
+    ) -> list[Piece]:
+        captured: list[Piece] = []
 
         if self.boardSize == 8:
             if abs(new_row - old_row) == 2:
@@ -134,7 +178,7 @@ class Board:
             last_row = 0 if piece.color == Color.WHITE else self.boardSize - 1
             if piece.row == last_row:
                 promoted = piece.promote()
-                self.board[piece.row] [piece.col] = promoted
+                self.board[piece.row][piece.col] = promoted
                 return promoted
         return piece             
     
@@ -146,22 +190,9 @@ class Board:
                 
                 if (row + col) % 2 == 1:
                     if row < rows_to_fill:
-                        self.board[row] [col] = Man(Color.BLACK, row, col)
+                        self.board[row][col] = Man(Color.BLACK, row, col)
                     elif row >= self.boardSize - rows_to_fill:
-                        self.board[row] [col] = Man(Color.WHITE, row, col)
-
-    def _path_has_capture(self, path: list[tuple[int, int]]) -> bool:
-        if len(path) == 1:
-            r1, c1 = path[0]
-            piece = self.getPiece(r1, c1)
-            if piece:  
-                return False
-        
-            return False
-        for (r1, c1), (r2, c2) in zip(path, path[1:]):
-            if abs(r2 - r1) > 1 or abs(c2 - c1) > 1:
-                return True
-        return False
+                        self.board[row][col] = Man(Color.WHITE, row, col)
 
     def _is_within_bounds(self, row: int, col: int) -> bool:
         return 0 <= row < self.boardSize and 0 <= col < self.boardSize

@@ -1,14 +1,22 @@
+from __future__ import annotations
+
 from enum import Enum
 from typing import TYPE_CHECKING
+
+from .move import Coordinate, Move
+
 if TYPE_CHECKING:
-    from board import Board
+    from .board import Board
+
+
+MoveList = list[Move]
 
 class Color(Enum):
     BLACK = "black"
     WHITE = "white"
 
 class Piece:
-    def __init__ (self, color: Color, row: int, col: int) -> None:
+    def __init__(self, color: Color, row: int, col: int) -> None:
         self.color = color
         self.row = row
         self.col = col
@@ -18,35 +26,50 @@ class Piece:
         self.row = new_row
         self.col = new_col
 
-    def possibleMoves(self, board: "Board") -> list[list[tuple[int, int]]]:
+    @property
+    def position(self) -> Coordinate:
+        return (self.row, self.col)
+
+    def possibleMoves(self, board: "Board") -> MoveList:
         return []
     
+    def getCopy(self) -> Piece:
+        clone = self.__class__(self.color, self.row, self.col)
+        clone.is_king = self.is_king
+        return clone
+
     def __repr__(self) -> str:
-        return f'Color: {self.color}, King: {self.is_king}, Row: {self.row}, Column: {self.col}'
-    
-    def getCopy(self): return Piece(self.color,self.row,self.col)
+        piece_type = "K" if self.is_king else "M"
+        return f"{piece_type}({self.color.name},{self.row},{self.col})"
 
 class King(Piece):
     def __init__(self, color: Color, row: int, col: int):
         super().__init__(color, row, col)
         self.is_king = True
     
-    def getCopy(self) -> Piece: 
+    def getCopy(self) -> Piece:
         return King(self.color, self.row, self.col)
     
-    def possibleMoves(self, board: "Board") -> list[list[tuple[int, int]]]:
-        moves = []
-        captures = []
-        directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)] 
+    def possibleMoves(self, board: "Board") -> MoveList:
+        origin = self.position
+        moves: MoveList = []
+        capture_moves: MoveList = []
+        directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
 
         if board.boardSize == 8:
             for dr, dc in directions:
                 new_r, new_c = self.row + dr, self.col + dc
                 if board._is_within_bounds(new_r, new_c) and not board.getPiece(new_r, new_c):
-                    moves.append([(new_r, new_c)])
+                    moves.append(Move(start=origin, steps=((new_r, new_c),)))
 
-            def dfs_english(r, c, visited: set) -> list[list[tuple[int, int]]]:
-                paths = []
+            def dfs_english(
+                r: int,
+                c: int,
+                path: list[Coordinate],
+                captured: list[Coordinate],
+                visited: set[Coordinate],
+            ) -> None:
+                extended = False
                 for dr, dc in directions:
                     mr, mc = r + dr, c + dc
                     er, ec = r + 2 * dr, c + 2 * dc
@@ -57,88 +80,109 @@ class King(Piece):
                         and not board.getPiece(er, ec)
                         and (mr, mc) not in visited
                     ):
-                        new_visited = visited | {(mr, mc)}
-                        next_caps = dfs_english(er, ec, new_visited)
-                        if next_caps:
-                            for seq in next_caps:
-                                paths.append([(er, ec)] + seq)
-                        else:
-                            paths.append([(er, ec)])
-                return paths
+                        extended = True
+                        dfs_english(
+                            er,
+                            ec,
+                            path + [(er, ec)],
+                            captured + [(mr, mc)],
+                            visited | {(mr, mc)},
+                        )
+                if not extended and captured:
+                    capture_moves.append(
+                        Move(start=origin, steps=tuple(path), captures=tuple(captured))
+                    )
 
-            captures = dfs_english(self.row, self.col, set())
+            dfs_english(self.row, self.col, [], [], set())
 
-        else:  
+        else:
             for dr, dc in directions:
                 r, c = self.row + dr, self.col + dc
                 while board._is_within_bounds(r, c) and not board.getPiece(r, c):
-                    moves.append([(r, c)])
+                    moves.append(Move(start=origin, steps=((r, c),)))
                     r += dr
                     c += dc
 
-            def dfs_international(r, c, visited: set) -> list[list[tuple[int, int]]]:
-                paths = []
+            def dfs_international(
+                r: int,
+                c: int,
+                path: list[Coordinate],
+                captured: list[Coordinate],
+                visited: set[Coordinate],
+            ) -> None:
+                extended = False
                 for dr, dc in directions:
                     step_r, step_c = r + dr, c + dc
-                    enemy = None
+                    enemy: Coordinate | None = None
                     while board._is_within_bounds(step_r, step_c):
                         target = board.getPiece(step_r, step_c)
                         if target:
                             if target.color == self.color or (step_r, step_c) in visited:
-                                break
-                            enemy = (step_r, step_c)
+                                enemy = None
+                            else:
+                                enemy = (step_r, step_c)
                             break
                         step_r += dr
                         step_c += dc
-                    if enemy:
-                        after_r, after_c = enemy[0] + dr, enemy[1] + dc
-                        while board._is_within_bounds(after_r, after_c) and not board.getPiece(after_r, after_c):
-                            new_visited = visited | {enemy}
-                            next_caps = dfs_international(after_r, after_c, new_visited)
-                            if next_caps:
-                                for seq in next_caps:
-                                    paths.append([(after_r, after_c)] + seq)
-                            else:
-                                paths.append([(after_r, after_c)])
-                            after_r += dr
-                            after_c += dc
-                return paths
+                    if not enemy:
+                        continue
+                    after_r, after_c = enemy[0] + dr, enemy[1] + dc
+                    while board._is_within_bounds(after_r, after_c) and not board.getPiece(after_r, after_c):
+                        extended = True
+                        dfs_international(
+                            after_r,
+                            after_c,
+                            path + [(after_r, after_c)],
+                            captured + [enemy],
+                            visited | {enemy},
+                        )
+                        after_r += dr
+                        after_c += dc
+                if not extended and captured:
+                    capture_moves.append(
+                        Move(start=origin, steps=tuple(path), captures=tuple(captured))
+                    )
 
-            captures = dfs_international(self.row, self.col, set())
+            dfs_international(self.row, self.col, [], [], set())
 
-        return captures if captures else moves
+        return capture_moves if capture_moves else moves
     
 
 class Man(Piece):
     def __init__(self, color: Color, row: int, col: int):
-        super().__init__(color, row, col)       
+        super().__init__(color, row, col)
 
     def promote(self) -> King:
-        return King(self.color, self.row, self.col)    
-    
-    def getCopy(self) -> Piece: 
+        return King(self.color, self.row, self.col)
+
+    def getCopy(self) -> Piece:
         return Man(self.color, self.row, self.col)
 
-    def possibleMoves(self,board: "Board") -> list[list[tuple[int, int]]]:
-        moves = []
-        captures = []
+    def possibleMoves(self, board: "Board") -> MoveList:
+        origin = self.position
+        moves: MoveList = []
+        capture_moves: MoveList = []
 
         forward_dirs = [(-1, -1), (-1, 1)] if self.color == Color.WHITE else [(1, -1), (1, 1)]
 
         if board.boardSize == 8:
-            capture_dirs = forward_dirs  
+            capture_dirs = forward_dirs
         else:
             capture_dirs = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
 
-       
         for dr, dc in forward_dirs:
             new_r, new_c = self.row + dr, self.col + dc
             if board._is_within_bounds(new_r, new_c) and not board.getPiece(new_r, new_c):
-                moves.append([(new_r, new_c)])
+                moves.append(Move(start=origin, steps=((new_r, new_c),)))
 
-        
-        def dfs_captures(r, c, visited: set[tuple[int, int]]) -> list[list[tuple[int, int]]]:
-            local_caps = []
+        def dfs_captures(
+            r: int,
+            c: int,
+            path: list[Coordinate],
+            captured: list[Coordinate],
+            visited: set[Coordinate],
+        ) -> None:
+            extended = False
             for dr, dc in capture_dirs:
                 mid_r, mid_c = r + dr, c + dc
                 end_r, end_c = r + 2 * dr, c + 2 * dc
@@ -149,19 +193,21 @@ class Man(Piece):
                     and not board.getPiece(end_r, end_c)
                     and (mid_r, mid_c) not in visited
                 ):
-                    new_visited = visited.copy()
-                    new_visited.add((mid_r, mid_c))
-                    next_moves = dfs_captures(end_r, end_c, new_visited)
-                    if next_moves:
-                        for seq in next_moves:
-                            local_caps.append([(end_r, end_c)] + seq)
-                    else:
-                        local_caps.append([(end_r, end_c)])
-            return local_caps
+                    extended = True
+                    dfs_captures(
+                        end_r,
+                        end_c,
+                        path + [(end_r, end_c)],
+                        captured + [(mid_r, mid_c)],
+                        visited | {(mid_r, mid_c)},
+                    )
+            if not extended and captured:
+                capture_moves.append(
+                    Move(start=origin, steps=tuple(path), captures=tuple(captured))
+                )
 
-        captures = dfs_captures(self.row, self.col, set())
+        dfs_captures(self.row, self.col, [], [], set())
 
-        
-        return captures if captures else moves
+        return capture_moves if capture_moves else moves
 
-    
+
