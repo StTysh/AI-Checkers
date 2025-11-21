@@ -5,6 +5,7 @@ from typing import Optional
 from .board import Board
 from .move import Move
 from .pieces import Color, Piece
+from .player import PlayerController
 
 @dataclass
 class MoveRecord:
@@ -14,14 +15,23 @@ class MoveRecord:
     captured: list[Piece]
 
 class Game:
-    def __init__(self):
-        self.board = Board()
+    """Core game wrapper that can run on different board sizes."""
+
+    def __init__(self, board_size: int = 8):
+        self.board_size = board_size
+        self.board = Board(board_size)
         self.current_player = self.board.turn
         self.winner: Optional[Color] = None
         self.move_history: list[MoveRecord] = []
+        self.players: dict[Color, PlayerController] = {
+            Color.WHITE: PlayerController.human("White Human"),
+            Color.BLACK: PlayerController.human("Black Human"),
+        }
 
-    def reset(self):
-        self.board = Board()
+    def reset(self, board_size: Optional[int] = None):
+        if board_size is not None:
+            self.board_size = board_size
+        self.board = Board(self.board_size)
         self.current_player = self.board.turn
         self.winner = None
         self.move_history.clear()
@@ -32,6 +42,28 @@ class Game:
 
     def getValidMoves(self) -> dict[Piece, list[Move]]:
         return self.board.getAllValidMoves(self.current_player)
+
+    def setPlayer(self, color: Color, controller: PlayerController) -> None:
+        self.players[color] = controller
+
+    def getPlayer(self, color: Color) -> PlayerController:
+        return self.players[color]
+
+    def currentController(self) -> PlayerController:
+        return self.getPlayer(self.current_player)
+
+    def isAITurn(self) -> bool:
+        return not self.currentController().is_human
+
+    def requestAIMove(self) -> bool:
+        controller = self.currentController()
+        if controller.is_human:
+            return False
+        decision = controller.select_move(self)
+        if decision is None:
+            return False
+        piece, move = decision
+        return self.makeMove(piece, move)
     
     def makeMove(self, piece: Piece, move: Move) -> bool:
         if not piece or move is None:
@@ -100,28 +132,38 @@ class Game:
             print(f"Game over! Winner: {self.getWinner().value if self.winner else 'Draw'}")
             return
 
+        controller = self.currentController()
+        print(f"{controller.name} ({self.current_player.value}) to move.")
         self.displayBoard()
+
         moves = self.getValidMoves()
         if not moves:
             print(f"No moves for {self.current_player.value}.")
             self.winner = Color.BLACK if self.current_player == Color.WHITE else Color.WHITE
             return
 
-        print(f"Available moves for {self.current_player.value}:")
-        for i, (piece, options) in enumerate(moves.items(), 1):
-            print(f"{i}. {piece}")
-            for j, move in enumerate(options, 1):
-                print(f"   {j}: {move}")
+        if controller.is_human:
+            print(f"Available moves for {self.current_player.value}:")
+            for i, (piece, options) in enumerate(moves.items(), 1):
+                print(f"{i}. {piece}")
+                for j, move in enumerate(options, 1):
+                    print(f"   {j}: {move}")
 
-        # CLI interaction (basic)
-        try:
-            idx = int(input("Select piece number: ")) - 1
-            selected_piece = list(moves.keys())[idx]
-            move_idx = int(input(f"Select move number (1-{len(moves[selected_piece])}): ")) - 1
-            selected_move = moves[selected_piece][move_idx]
-        except (ValueError, IndexError):
-            print("Invalid input.")
-            return
+            try:
+                idx = int(input("Select piece number: ")) - 1
+                selected_piece = list(moves.keys())[idx]
+                move_idx = int(input(f"Select move number (1-{len(moves[selected_piece])}): ")) - 1
+                selected_move = moves[selected_piece][move_idx]
+            except (ValueError, IndexError):
+                print("Invalid input.")
+                return
+        else:
+            decision = controller.select_move(self)
+            if decision is None:
+                print(f"{controller.name} cannot find a move.")
+                self.winner = Color.BLACK if self.current_player == Color.WHITE else Color.WHITE
+                return
+            selected_piece, selected_move = decision
 
         success = self.makeMove(selected_piece, selected_move)
         if success and self.winner:
