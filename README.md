@@ -1,21 +1,57 @@
 ## Checkers AI Playground
 
-### Quick start
+Modern FastAPI + React playground for experimenting with competitive checkers agents.
 
+### Highlights
+- British (8x8) and International (10x10) variants powered by a shared `core` engine.
+- Advanced minimax with transposition table, killer-move ordering, and quiescence; simple minimax kept for A/B tests.
+- Rich heuristic (`backend/ai/huistic.py`) rewarding material, mobility, promotion threats, edges, chain support, and capture pressure.
+- REST session API supporting human players, queued AI moves, undo, and configurable controllers per color.
+- Vite + React UI with animated pieces, theme switching, and live AI status.
+
+### Requirements
+- Python 3.11+
+- Node.js 18+
+
+### Backend
 ```bash
-python main.py --white human --black minimax --minimax-depth 5 --ai-move-delay 500
+cd backend
+python -m venv venv && venv/Scripts/activate  # Windows path shown
+pip install -r requirements.txt
+python main.py --host 127.0.0.1 --port 8000 --reload
+```
+Key modules:
+- `server/session.py` – thread-safe orchestrator with pending-move queueing.
+- `ai/minimax.py` – feature-rich search controller.
+- `ai/simple_minimax.py` – baseline search for comparisons.
+
+### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+The dev server proxies API calls to the backend; adjust Vite config if you change the port.
+
+### Typical workflow
+1. Start the backend (FastAPI + Uvicorn).
+2. Start the frontend and open the printed URL.
+3. Assign controllers per color (Human, Minimax, Minimax Simple) and tweak options such as depth, TT usage, and quiescence.
+4. Watch real-time move annotations, pending AI moves, and restart or undo through the UI.
+
+### Testing & troubleshooting
+- Use `python -m pytest` inside `backend` (tests live under `backend/tests`).
+- Clear transposition tables between games via the API if you hot-swap controller colors.
+- For deterministic debugging set `PYTHONHASHSEED=0` and rely on the fixed Zobrist seed in `core/hash.py`.
+
+### Project structure (excerpt)
+```
+backend/
+	ai/              # heuristics + controllers
+	core/            # board, pieces, move logic
+	server/          # FastAPI wiring
+frontend/
+	src/             # React app (Board, Controls, Dialogs)
 ```
 
-- `--white` / `--black`: choose `human` or `minimax` for each color.
-- `--minimax-depth`: search depth for every minimax controller.
-- `--ai-move-delay`: pause (ms) before an AI moves so you can follow along; set to `0` for instant play.
-
-### In-game controls
-
-- `Mouse`: select and move pieces when the current side is human-controlled.
-- `1` / `2`: cycle White or Black between Human and Minimax on the fly (AI vs AI works too).
-- `R`: reset the board (controllers stay as configured).
-- `U`: undo the previous move.
-- `Esc` or `Q`: quit the session.
-
-The GUI shows which controller is active for each side plus live AI status (“thinking…”, “ready”, etc.). When both sides are AI driven the match progresses automatically; you can still pause by switching a side back to human mid-game. This controller layer is future-proofed for upcoming Monte Carlo tree search, genetic, reinforcement, or remote/server-driven agents so they can challenge one another or a human opponent.
+This README intentionally stays short (<100 lines). Consult inline module docs for deeper dives into heuristics, move ordering, and UI components.
