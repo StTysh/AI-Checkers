@@ -1,7 +1,9 @@
+import { useState } from "react";
 import {
   Card,
   CardHeader,
   CardContent,
+  Button,
   FormControl,
   InputLabel,
   Select,
@@ -19,8 +21,11 @@ const PlayerConfigCard = ({ color }) => {
   const label = color === "white" ? "White" : "Black";
   const { store, api } = useGameContext();
   const config = store(state => state.playerConfig[color]);
+  const boardState = store(state => state.boardState);
   const updatePlayer = store(state => state.updatePlayerConfig);
   const gameMode = store(state => state.gameMode);
+  const manualAiApproval = store(state => state.manualAiApproval);
+  const [performing, setPerforming] = useState(false);
 
   const syncConfig = changes => {
     updatePlayer(color, changes);
@@ -36,6 +41,26 @@ const PlayerConfigCard = ({ color }) => {
     if (gameMode === "pvp") return option.value !== "human";
     if (gameMode === "aivai") return option.value === "human";
     return false;
+  };
+
+  const pendingMove = boardState?.pendingAiMoves?.[color];
+  const showPerformButton =
+    manualAiApproval &&
+    gameMode !== "pvp" &&
+    config.type !== "human" &&
+    Boolean(pendingMove) &&
+    boardState?.turn === color;
+
+  const handlePerformMove = async () => {
+    if (!showPerformButton || performing) return;
+    setPerforming(true);
+    try {
+      await api.performPendingAIMove(color);
+    } catch (error) {
+      // Error already surfaced via global toast/state.
+    } finally {
+      setPerforming(false);
+    }
   };
 
   return (
@@ -65,6 +90,11 @@ const PlayerConfigCard = ({ color }) => {
               valueLabelDisplay="auto"
               marks
             />
+            {showPerformButton && (
+              <Button variant="contained" onClick={handlePerformMove} disabled={performing}>
+                Perform move
+              </Button>
+            )}
             {/* <FormGroup>
               <FormControlLabel
                 control={

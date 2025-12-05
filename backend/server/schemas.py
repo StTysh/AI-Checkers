@@ -19,7 +19,7 @@ class MoveRequest(BaseModel):
 
 class PlayerConfigPayload(BaseModel):
     type: Optional[
-        Literal["human", "minimax", "mcts", "genetic", "reinforcement", "remote"]
+        Literal["human", "minimax", "minimax_simple", "mcts", "genetic", "reinforcement", "remote"]
     ] = None
     depth: Optional[int] = Field(default=None, ge=1, le=16)
     alphaBeta: Optional[bool] = None
@@ -44,6 +44,11 @@ class ResetRequest(BaseModel):
 
 class AIMoveRequest(BaseModel):
     color: Optional[Literal["white", "black"]] = None
-    algorithm: Literal["minimax"] = "minimax"
+    algorithm: Literal["minimax", "minimax_simple"] = "minimax"
     depth: Optional[int] = Field(default=None, ge=1, le=16)
     persist: bool = True
+    commitImmediately: bool = True
+
+
+class PerformAIMoveRequest(BaseModel):
+    color: Literal["white", "black"]

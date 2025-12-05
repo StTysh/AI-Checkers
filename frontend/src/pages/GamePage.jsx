@@ -6,7 +6,6 @@ import GameModeCard from "../components/Controls/GameModeCard";
 import PlayerConfigCard from "../components/Controls/PlayerConfigCard";
 import VariantSelectCard from "../components/Controls/VariantSelectCard";
 import GameActionsCard from "../components/Controls/GameActionsCard";
-import AIVsAIPanel from "../components/Controls/AIVsAIPanel";
 import GameOverDialog from "../components/Dialogs/GameOverDialog";
 import ThemeSwitcher from "../components/UI/ThemeSwitcher";
 
@@ -25,7 +24,6 @@ const GamePage = () => {
             <PlayerConfigCard color="black" />
             <VariantSelectCard />
             <GameActionsCard />
-            <AIVsAIPanel />
             <ThemeSwitcher />
           </Box>
         </Grid>

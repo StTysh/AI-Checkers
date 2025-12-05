@@ -12,18 +12,19 @@ import {
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import UndoIcon from "@mui/icons-material/Undo";
-import RedoIcon from "@mui/icons-material/Redo";
 import { useGameContext } from "../../context/GameProvider";
 
 const GameActionsCard = () => {
   const [starting, setStarting] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const { store, api } = useGameContext();
   const boardState = store(state => state.boardState);
   const error = store(state => state.error);
   const playerConfig = store(state => state.playerConfig);
   const variant = store(state => state.variant);
   const setGameReady = store(state => state.setGameReady);
+  const gameMode = store(state => state.gameMode);
 
   const handleStart = async () => {
     if (!boardState) return;
@@ -40,10 +41,22 @@ const GameActionsCard = () => {
   const handleReset = async () => {
     setResetting(true);
     try {
-      await api.resetGame({ variant });
       setGameReady(false);
+      await api.waitForAiIdle();
+      await api.resetGame({ variant });
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!boardState?.canUndo || gameMode === "aivai") return;
+    setUndoing(true);
+    try {
+      await api.waitForAiIdle();
+      await api.undoMove();
+    } finally {
+      setUndoing(false);
     }
   };
 
@@ -70,14 +83,14 @@ const GameActionsCard = () => {
               Restart
             </Button>
           </ButtonGroup>
-          <ButtonGroup fullWidth>
-            <Button startIcon={<UndoIcon />} disabled={!boardState?.canUndo}>
-              Undo
-            </Button>
-            <Button startIcon={<RedoIcon />} disabled={!boardState?.canRedo}>
-              Redo
-            </Button>
-          </ButtonGroup>
+          <Button
+            fullWidth
+            startIcon={<UndoIcon />}
+            onClick={handleUndo}
+            disabled={!boardState?.canUndo || gameMode === "aivai" || undoing}
+          >
+            Undo
+          </Button>
           {error && <Alert severity="error">{error}</Alert>}
           <Typography variant="body2" color="text.secondary">
             Show/hide hints & coordinates in Variant settings. Future toggles: sound, move list, history export.

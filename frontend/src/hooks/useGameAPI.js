@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 const API_BASE = "/api";
+const SUPPORTED_AI_TYPES = new Set(["minimax", "minimax_simple"]);
 
 const handleResponse = async response => {
   if (!response.ok) {
@@ -46,30 +47,74 @@ export const useGameAPI = store => {
   );
 
   const aiLoopRef = useRef(false);
+  const aiIdleWaitersRef = useRef([]);
+
+  const notifyAiIdle = useCallback(() => {
+    aiIdleWaitersRef.current.forEach(resolve => resolve());
+    aiIdleWaitersRef.current = [];
+  }, []);
+
+  const waitForAiIdle = useCallback(() => {
+    if (!aiLoopRef.current) {
+      return Promise.resolve();
+    }
+    return new Promise(resolve => {
+      aiIdleWaitersRef.current.push(resolve);
+    });
+  }, []);
+
+  const performPendingRequest = useCallback(
+    async color => {
+      const { setBoardState, setError } = store.getState();
+      try {
+        const data = await handleResponse(
+          await fetch(`${API_BASE}/ai-perform`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ color }),
+          }),
+        );
+        setBoardState(data);
+      } catch (error) {
+        setError(error.message);
+        throw error;
+      }
+    },
+    [store],
+  );
 
   const runAITurns = useCallback(async () => {
     if (aiLoopRef.current) return;
     aiLoopRef.current = true;
     try {
       while (true) {
-        const { boardState, gameReady, gameMode, playerConfig } = store.getState();
+        const { boardState, gameReady, gameMode, playerConfig, manualAiApproval } = store.getState();
         if (!gameReady || !boardState || boardState.winner) break;
         if (gameMode === "pvp") break;
         const turn = boardState.turn;
         const config = playerConfig[turn];
-        if (!config || config.type !== "minimax") break;
+        if (!config || !SUPPORTED_AI_TYPES.has(config.type)) break;
+        const pendingMove = boardState.pendingAiMoves?.[turn];
+        if (pendingMove) {
+          if (manualAiApproval) break;
+          await performPendingRequest(turn);
+          continue;
+        }
         await requestAIMove({
           color: turn,
-          algorithm: "minimax",
+          algorithm: config.type,
           depth: config.depth,
           persist: true,
+          commitImmediately: !manualAiApproval,
         });
+        if (manualAiApproval) break;
         if (store.getState().gameMode !== "aivai") break;
       }
     } finally {
       aiLoopRef.current = false;
+      notifyAiIdle();
     }
-  }, [requestAIMove, store]);
+  }, [notifyAiIdle, performPendingRequest, requestAIMove, store]);
 
   const sendMove = useCallback(
     async payload => {
@@ -165,6 +210,29 @@ export const useGameAPI = store => {
     [store],
   );
 
+  const undoMove = useCallback(async () => {
+    const { setBoardState, setError } = store.getState();
+    try {
+      const data = await handleResponse(
+        await fetch(`${API_BASE}/undo`, {
+          method: "POST",
+        }),
+      );
+      setBoardState(data);
+    } catch (error) {
+      setError(error.message);
+      throw error;
+    }
+  }, [store]);
+
+  const performPendingAIMove = useCallback(
+    async color => {
+      await performPendingRequest(color);
+      await runAITurns();
+    },
+    [performPendingRequest, runAITurns],
+  );
+
   useEffect(() => {
     loadBoard();
   }, [loadBoard]);
@@ -175,12 +243,27 @@ export const useGameAPI = store => {
       sendMove,
       requestAIMove,
       runAITurns,
+      waitForAiIdle,
+      undoMove,
+      performPendingAIMove,
       getValidMoves,
       changeVariant,
       resetGame,
       configurePlayers,
     }),
-    [loadBoard, sendMove, requestAIMove, runAITurns, getValidMoves, changeVariant, resetGame, configurePlayers],
+    [
+      loadBoard,
+      sendMove,
+      requestAIMove,
+      runAITurns,
+      waitForAiIdle,
+      getValidMoves,
+      changeVariant,
+      resetGame,
+      configurePlayers,
+      undoMove,
+      performPendingAIMove,
+    ],
   );
 };
 

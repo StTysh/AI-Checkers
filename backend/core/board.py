@@ -4,6 +4,7 @@ from typing import Optional
 
 from .move import Move
 from .pieces import Piece, Color, Man
+from .hash import compute_board_hash
 
 
 MoveMap = dict[Piece, list[Move]]
@@ -134,6 +135,9 @@ class Board:
             raise ValueError("No piece found at move start when simulating move.")
         board_copy.movePiece(piece, move)
         return board_copy
+
+    def compute_hash(self) -> int:
+        return compute_board_hash(self)
 
     def _remove_piece(self, piece: Piece):
         if piece and self.getPiece(piece.row, piece.col) == piece:

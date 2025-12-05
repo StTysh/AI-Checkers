@@ -35,6 +35,10 @@ class Game:
         self.current_player = self.board.turn
         self.winner = None
         self.move_history.clear()
+        # Lazy import avoids a circular dependency during module load time.
+        from ai.minimax import clear_transposition_table
+
+        clear_transposition_table()
 
     def switchTurn(self):
         self.current_player = self.board.turn

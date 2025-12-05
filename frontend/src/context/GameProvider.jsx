@@ -48,6 +48,7 @@ const useGameStore = create(
     soundsEnabled: true,
     lastMove: null,
     gameReady: false,
+    manualAiApproval: false,
     setBoardState: payload =>
       set(state => {
         state.boardState = payload;
@@ -93,6 +94,7 @@ const useGameStore = create(
       }),
     setShowHints: flag => set({ showHints: flag }),
     setShowCoordinates: flag => set({ showCoordinates: flag }),
+    setManualAiApproval: flag => set({ manualAiApproval: flag }),
     setGameReady: flag => set({ gameReady: flag }),
     toggleSimulation: running =>
       set(state => {

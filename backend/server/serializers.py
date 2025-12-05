@@ -16,6 +16,7 @@ def _coord_tuple_to_dict(coord: tuple[int, int]) -> dict[str, int]:
 
 def serialize_piece(piece: Piece) -> dict[str, Any]:
     return {
+        "id": piece.id,
         "row": piece.row,
         "col": piece.col,
         "color": piece.color.value,

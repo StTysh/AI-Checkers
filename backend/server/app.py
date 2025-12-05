@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from .schemas import AIMoveRequest, ConfigRequest, MoveRequest, ResetRequest, VariantRequest
+from .schemas import AIMoveRequest, ConfigRequest, MoveRequest, PerformAIMoveRequest, ResetRequest, VariantRequest
 from .session import GameSession
 
 
@@ -60,6 +60,22 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/ai-perform")
+    def ai_perform(payload: PerformAIMoveRequest, session: GameSession = Depends(get_session)):
+        try:
+            return session.perform_ai_move(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/undo")
+    def undo_move(session: GameSession = Depends(get_session)):
+        try:
+            return session.undo_move()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/reset")
     def reset_game(payload: Optional[ResetRequest] = None, session: GameSession = Depends(get_session)):

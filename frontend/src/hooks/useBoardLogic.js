@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useRef, useEffect } from "react";
 import { useGameContext } from "../context/GameProvider";
 
 export const useBoardLogic = () => {
@@ -11,6 +11,25 @@ export const useBoardLogic = () => {
   const gameReady = store(state => state.gameReady);
   const setSelectedCell = store(state => state.setSelectedCell);
   const setHighlightMoves = store(state => state.setHighlightMoves);
+
+  const previousPiecesRef = useRef([]);
+
+  useEffect(() => {
+    if (!boardState?.pieces) {
+      previousPiecesRef.current = [];
+      return;
+    }
+    previousPiecesRef.current = boardState.pieces.map(piece => ({ ...piece }));
+  }, [boardState?.pieces]);
+
+  const pieces = useMemo(() => {
+    if (!boardState) return [];
+    const previousById = new Map(previousPiecesRef.current.map(piece => [piece.id, piece]));
+    return boardState.pieces.map(piece => {
+      const previous = previousById.get(piece.id);
+      return previous ? { ...piece, row: piece.row, col: piece.col, previousRow: previous.row, previousCol: previous.col } : piece;
+    });
+  }, [boardState]);
 
   const squares = useMemo(() => {
     if (!boardState) return [];
@@ -65,6 +84,7 @@ export const useBoardLogic = () => {
 
   return {
     boardState,
+    pieces,
     squares,
     selectedCell,
     selectCell,

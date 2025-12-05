@@ -16,6 +16,7 @@ MovePolicy = Callable[["Game"], Optional[MoveDecision]]
 class PlayerKind(str, Enum):
     HUMAN = "human"
     MINIMAX = "minimax"
+    MINIMAX_SIMPLE = "minimax_simple"
     MONTE_CARLO = "monte_carlo"
     GENETIC = "genetic"
     REINFORCEMENT = "reinforcement"

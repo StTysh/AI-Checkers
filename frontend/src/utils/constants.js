@@ -1,6 +1,7 @@
 export const PLAYER_KINDS = [
   { value: "human", label: "Human" },
   { value: "minimax", label: "Minimax" },
+  { value: "minimax_simple", label: "Minimax (baseline)" },
   { value: "mcts", label: "Monte Carlo (coming soon)", disabled: true },
   { value: "genetic", label: "Genetic (coming soon)", disabled: true },
   { value: "reinforcement", label: "Reinforcement (coming soon)", disabled: true },

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING
+from itertools import count
+from typing import TYPE_CHECKING, Optional
 
 from .move import Coordinate, Move
 
@@ -10,17 +11,21 @@ if TYPE_CHECKING:
 
 
 MoveList = list[Move]
+_PIECE_ID_COUNTER = count()
+
 
 class Color(Enum):
     BLACK = "black"
     WHITE = "white"
 
+
 class Piece:
-    def __init__(self, color: Color, row: int, col: int) -> None:
+    def __init__(self, color: Color, row: int, col: int, *, identifier: Optional[int] = None) -> None:
         self.color = color
         self.row = row
         self.col = col
         self.is_king = False
+        self.id = identifier if identifier is not None else next(_PIECE_ID_COUNTER)
 
     def move(self, new_row: int, new_col: int) -> None:
         self.row = new_row
@@ -33,8 +38,8 @@ class Piece:
     def possibleMoves(self, board: "Board") -> MoveList:
         return []
     
-    def getCopy(self) -> Piece:
-        clone = self.__class__(self.color, self.row, self.col)
+    def getCopy(self) -> "Piece":
+        clone = self.__class__(self.color, self.row, self.col, identifier=self.id)
         clone.is_king = self.is_king
         return clone
 
@@ -43,12 +48,12 @@ class Piece:
         return f"{piece_type}({self.color.name},{self.row},{self.col})"
 
 class King(Piece):
-    def __init__(self, color: Color, row: int, col: int):
-        super().__init__(color, row, col)
+    def __init__(self, color: Color, row: int, col: int, *, identifier: Optional[int] = None):
+        super().__init__(color, row, col, identifier=identifier)
         self.is_king = True
     
-    def getCopy(self) -> Piece:
-        return King(self.color, self.row, self.col)
+    def getCopy(self) -> "Piece":
+        return King(self.color, self.row, self.col, identifier=self.id)
     
     def possibleMoves(self, board: "Board") -> MoveList:
         origin = self.position
@@ -149,14 +154,14 @@ class King(Piece):
     
 
 class Man(Piece):
-    def __init__(self, color: Color, row: int, col: int):
-        super().__init__(color, row, col)
+    def __init__(self, color: Color, row: int, col: int, *, identifier: Optional[int] = None):
+        super().__init__(color, row, col, identifier=identifier)
 
     def promote(self) -> King:
-        return King(self.color, self.row, self.col)
+        return King(self.color, self.row, self.col, identifier=self.id)
 
-    def getCopy(self) -> Piece:
-        return Man(self.color, self.row, self.col)
+    def getCopy(self) -> "Piece":
+        return Man(self.color, self.row, self.col, identifier=self.id)
 
     def possibleMoves(self, board: "Board") -> MoveList:
         origin = self.position

@@ -18,9 +18,11 @@ const VariantSelectCard = () => {
   const variant = store(state => state.variant);
   const showHints = store(state => state.showHints);
   const showCoordinates = store(state => state.showCoordinates);
+  const manualAiApproval = store(state => state.manualAiApproval);
   const setVariant = store(state => state.setVariant);
   const setShowHints = store(state => state.setShowHints);
   const setShowCoordinates = store(state => state.setShowCoordinates);
+  const setManualAiApproval = store(state => state.setManualAiApproval);
 
   const handleVariantChange = async event => {
     const value = event.target.value;
@@ -50,6 +52,21 @@ const VariantSelectCard = () => {
           <FormControlLabel
             control={<Switch checked={showCoordinates} onChange={event => setShowCoordinates(event.target.checked)} />}
             label="Show coordinates"
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={manualAiApproval}
+                onChange={async event => {
+                  const enabled = event.target.checked;
+                  setManualAiApproval(enabled);
+                  if (!enabled) {
+                    await api.runAITurns();
+                  }
+                }}
+              />
+            }
+            label="Manual AI move approval"
           />
         </Stack>
       </CardContent>

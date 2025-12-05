@@ -2,9 +2,10 @@ import { Box, Paper, Typography } from "@mui/material";
 import { useBoardLogic } from "../../hooks/useBoardLogic";
 import Square from "./Square";
 import CoordinateLabel from "./CoordinateLabel";
+import Piece from "./Piece";
 
 const Board = () => {
-  const { boardState, squares, showCoordinates } = useBoardLogic();
+  const { boardState, pieces, squares, showCoordinates } = useBoardLogic();
 
   if (!boardState) {
     return (
@@ -29,16 +30,23 @@ const Board = () => {
           p: "clamp(1rem, 5vw, 2rem)",
         }}
       >
-        <Box
-          display="grid"
-          gridTemplateColumns={`repeat(${boardSize}, 1fr)`}
-          gridTemplateRows={`repeat(${boardSize}, 1fr)`}
-          width="100%"
-          height="100%"
-        >
-          {squares.flatMap((row, rIdx) =>
-            row.map((square, cIdx) => <Square key={`${rIdx}-${cIdx}`} row={rIdx} col={cIdx} square={square} />),
-          )}
+        <Box position="relative" width="100%" height="100%">
+          <Box
+            display="grid"
+            gridTemplateColumns={`repeat(${boardSize}, 1fr)`}
+            gridTemplateRows={`repeat(${boardSize}, 1fr)`}
+            width="100%"
+            height="100%"
+          >
+            {squares.flatMap((row, rIdx) =>
+              row.map((_, cIdx) => <Square key={`${rIdx}-${cIdx}`} row={rIdx} col={cIdx} />),
+            )}
+          </Box>
+          <Box sx={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 20 }}>
+            {pieces.map(piece => (
+              <Piece key={piece.id} piece={piece} boardSize={boardSize} />
+            ))}
+          </Box>
         </Box>
       </Paper>
 

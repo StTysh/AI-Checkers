@@ -1,9 +1,8 @@
 import { Box } from "@mui/material";
 import clsx from "clsx";
 import { useBoardLogic } from "../../hooks/useBoardLogic";
-import Piece from "./Piece";
 
-const Square = ({ row, col, square }) => {
+const Square = ({ row, col }) => {
   const { selectedCell, selectCell, highlightMoves } = useBoardLogic();
   const isLight = (row + col) % 2 === 0;
   const isSelected = selectedCell && selectedCell.row === row && selectedCell.col === col;
@@ -17,7 +16,7 @@ const Square = ({ row, col, square }) => {
         position: "relative",
         cursor: "pointer",
         backgroundColor: isLight ? "#f1d4a1" : "#6c452b",
-        "&.selected": { outline: "3px solid #f9a826" , zIndex: 10,},
+        "&.selected": { outline: "3px solid #f9a826" },
         "&.highlight::after": {
           content: '""',
           position: "absolute",
@@ -27,7 +26,6 @@ const Square = ({ row, col, square }) => {
         },
       }}
     >
-      {square?.piece && <Piece piece={square.piece} />}
     </Box>
   );
 };
