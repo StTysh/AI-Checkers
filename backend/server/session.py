@@ -5,7 +5,7 @@ from copy import deepcopy
 from threading import Lock
 from typing import Any, Iterable, Optional
 
-from ai.agents import create_minimax_controller, create_simple_minimax_controller
+from ai.agents import create_minimax_controller, create_simple_minimax_controller, create_mcts_controller
 from core.game import Game
 from core.move import Move
 from core.pieces import Color, Piece
@@ -26,6 +26,10 @@ def _default_player_settings() -> dict[str, Any]:
         "moveOrdering": True,
         "iterativeDeepening": False,
         "quiescence": False,
+        "iterations": 500,
+        "rolloutDepth": 80,
+        "explorationConstant": 1.4,
+        "randomSeed": None,
     }
 
 
@@ -136,6 +140,14 @@ class GameSession:
             overrides["type"] = payload.algorithm
             if payload.depth is not None:
                 overrides["depth"] = payload.depth
+            if payload.iterations is not None:
+                overrides["iterations"] = payload.iterations
+            if payload.rolloutDepth is not None:
+                overrides["rolloutDepth"] = payload.rolloutDepth
+            if payload.explorationConstant is not None:
+                overrides["explorationConstant"] = payload.explorationConstant
+            if payload.randomSeed is not None:
+                overrides["randomSeed"] = payload.randomSeed
             controller = self._controller_from_settings(color, overrides)
             self.game.setPlayer(color, controller)
             if payload.persist:
@@ -256,4 +268,16 @@ class GameSession:
         if player_type == "minimax_simple":
             depth = int(settings.get("depth") or 4)
             return create_simple_minimax_controller(label, depth=depth)
+        if player_type == "mcts":
+            iterations = int(settings.get("iterations") or 500)
+            rollout_depth = int(settings.get("rolloutDepth") or 80)
+            exploration_constant = float(settings.get("explorationConstant") or 1.4)
+            random_seed = settings.get("randomSeed")
+            return create_mcts_controller(
+                label,
+                iterations=iterations,
+                rollout_depth=rollout_depth,
+                exploration_constant=exploration_constant,
+                random_seed=random_seed,
+            )
         raise ValueError(f"Player type '{player_type}' not implemented yet.")

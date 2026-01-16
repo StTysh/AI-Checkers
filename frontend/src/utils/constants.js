@@ -2,7 +2,7 @@ export const PLAYER_KINDS = [
   { value: "human", label: "Human" },
   { value: "minimax", label: "Minimax" },
   { value: "minimax_simple", label: "Minimax (baseline)" },
-  { value: "mcts", label: "Monte Carlo (coming soon)", disabled: true },
+  { value: "mcts", label: "Monte Carlo Tree Search" },
   { value: "genetic", label: "Genetic (coming soon)", disabled: true },
   { value: "reinforcement", label: "Reinforcement (coming soon)", disabled: true },
 ];
@@ -35,6 +35,10 @@ export const DEFAULT_PLAYER_CONFIG = {
     iterativeDeepening: false,
     transposition: false,
     quiescence: false,
+    iterations: 500,
+    rolloutDepth: 80,
+    explorationConstant: 1.4,
+    randomSeed: null,
   },
   black: {
     type: "human",
@@ -44,5 +48,9 @@ export const DEFAULT_PLAYER_CONFIG = {
     iterativeDeepening: false,
     transposition: false,
     quiescence: false,
+    iterations: 500,
+    rolloutDepth: 80,
+    explorationConstant: 1.4,
+    randomSeed: null,
   },
 };

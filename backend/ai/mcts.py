@@ -1,0 +1,172 @@
+from __future__ import annotations
+
+import math
+import random
+from dataclasses import dataclass, field
+from typing import Iterable, Optional, Tuple
+
+from core.board import Board
+from core.game import Game
+from core.move import Move
+from core.pieces import Color, Man, Piece
+
+
+@dataclass
+class MCTSNode:
+    board: Board
+    parent: Optional["MCTSNode"] = None
+    move: Optional[Move] = None
+    children: list["MCTSNode"] = field(default_factory=list)
+    visits: int = 0
+    value: float = 0.0
+    untried_moves: list[Move] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.untried_moves:
+            moves_map = self.board.getAllValidMoves(self.board.turn)
+            self.untried_moves = _collect_moves(moves_map)
+
+    def is_fully_expanded(self) -> bool:
+        return not self.untried_moves
+
+    def best_child(self, exploration_constant: float) -> "MCTSNode":
+        parent_visits = max(1, self.visits)
+
+        def ucb(child: "MCTSNode") -> float:
+            if child.visits == 0:
+                return math.inf
+            exploit = child.value / child.visits
+            explore = exploration_constant * math.sqrt(math.log(parent_visits) / child.visits)
+            return exploit + explore
+
+        return max(self.children, key=ucb)
+
+
+def select_move(
+    game: Game,
+    *,
+    iterations: int = 500,
+    rollout_depth: int = 80,
+    exploration_constant: float = 1.4,
+    random_seed: Optional[int] = None,
+) -> Optional[Tuple[Piece, Move]]:
+    """Return the best move found by Monte Carlo Tree Search.
+
+    The rollout reward is from the perspective of the root player.
+    """
+    if iterations <= 0:
+        raise ValueError("Iterations must be positive.")
+    if rollout_depth <= 0:
+        raise ValueError("Rollout depth must be positive.")
+
+    root_board = game.board.copy()
+    root_player = root_board.turn
+    moves_map = root_board.getAllValidMoves(root_player)
+    if not moves_map:
+        return None
+
+    rng = random.Random(random_seed)
+    root = MCTSNode(board=root_board)
+
+    for _ in range(iterations):
+        node = root
+
+        # Selection
+        while node.children and node.is_fully_expanded():
+            node = node.best_child(exploration_constant)
+
+        # Expansion
+        if node.untried_moves:
+            move = rng.choice(node.untried_moves)
+            node.untried_moves.remove(move)
+            child_board = node.board.simulateMove(move)
+            child = MCTSNode(board=child_board, parent=node, move=move)
+            node.children.append(child)
+            node = child
+
+        # Simulation
+        reward = _rollout(node.board, root_player, rollout_depth, rng)
+
+        # Backpropagation
+        while node is not None:
+            node.visits += 1
+            node.value += reward
+            node = node.parent
+
+    if not root.children:
+        return None
+
+    best_child = max(root.children, key=lambda child: child.visits)
+    best_move = best_child.move
+    if best_move is None:
+        return None
+
+    piece = game.board.getPiece(*best_move.start)
+    if piece is None:
+        return None
+    return (piece, best_move)
+
+
+def _rollout(
+    board: Board,
+    root_player: Color,
+    rollout_depth: int,
+    rng: random.Random,
+) -> float:
+    current = board
+
+    for _ in range(rollout_depth):
+        winner = current.is_game_over()
+        if winner is not None:
+            return _reward(winner, root_player)
+
+        moves_map = current.getAllValidMoves(current.turn)
+        if not moves_map:
+            return 0.0
+
+        move = _choose_rollout_move(current, moves_map, rng)
+        current = current.simulateMove(move)
+
+    return 0.0
+
+
+def _choose_rollout_move(
+    board: Board,
+    moves_map: dict[Piece, Iterable[Move]],
+    rng: random.Random,
+) -> Move:
+    moves = _collect_moves(moves_map)
+    capture_moves = [move for move in moves if move.is_capture]
+    if capture_moves:
+        return rng.choice(capture_moves)
+
+    promotion_moves = [move for move in moves if _is_promotion_move(board, move)]
+    if promotion_moves:
+        return rng.choice(promotion_moves)
+
+    return rng.choice(moves)
+
+
+def _collect_moves(moves_map: dict[Piece, Iterable[Move]]) -> list[Move]:
+    return [move for moves in moves_map.values() for move in moves]
+
+
+def _is_promotion_move(board: Board, move: Move) -> bool:
+    piece = board.getPiece(*move.start)
+    if piece is None or not isinstance(piece, Man):
+        return False
+    end_row, _ = move.end
+    last_row = 0 if piece.color == Color.WHITE else board.boardSize - 1
+    return end_row == last_row
+
+
+def _reward(winner: Color, root_player: Color) -> float:
+    if winner == root_player:
+        return 1.0
+    if winner == _opponent(root_player):
+        return -1.0
+    return 0.0
+
+
+def _opponent(color: Color) -> Color:
+    return Color.BLACK if color == Color.WHITE else Color.WHITE

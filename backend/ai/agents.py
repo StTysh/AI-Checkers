@@ -5,8 +5,13 @@ from core.player import PlayerController, PlayerKind
 
 from .minimax import select_move as minimax_select
 from .simple_minimax import select_move as simple_minimax_select
+from .mcts import select_move as mcts_select
 
-__all__ = ["create_minimax_controller", "create_simple_minimax_controller"]
+__all__ = [
+    "create_minimax_controller",
+    "create_simple_minimax_controller",
+    "create_mcts_controller",
+]
 
 
 def create_minimax_controller(
@@ -53,5 +58,37 @@ def create_simple_minimax_controller(name: str, depth: int = 4) -> PlayerControl
     return PlayerController(
         kind=PlayerKind.MINIMAX_SIMPLE,
         name=f"{name} Minimax (baseline d={depth})",
+        policy=_policy,
+    )
+
+
+def create_mcts_controller(
+    name: str,
+    *,
+    iterations: int = 500,
+    rollout_depth: int = 80,
+    exploration_constant: float = 1.4,
+    random_seed: int | None = None,
+) -> PlayerController:
+    iterations = max(1, iterations)
+    rollout_depth = max(1, rollout_depth)
+    exploration_constant = max(0.01, exploration_constant)
+
+    def _policy(game: Game):
+        return mcts_select(
+            game,
+            iterations=iterations,
+            rollout_depth=rollout_depth,
+            exploration_constant=exploration_constant,
+            random_seed=random_seed,
+        )
+
+    suffix = f" (iter={iterations}, depth={rollout_depth}, C={exploration_constant:.2f})"
+    if random_seed is not None:
+        suffix += f", seed={random_seed}"
+
+    return PlayerController(
+        kind=PlayerKind.MONTE_CARLO,
+        name=f"{name} MCTS{suffix}",
         policy=_policy,
     )

@@ -10,10 +10,16 @@ import {
   MenuItem,
   Slider,
   Stack,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  TextField,
+  Typography,
   FormGroup,
   FormControlLabel,
   Switch,
 } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { PLAYER_KINDS } from "../../utils/constants";
 import { useGameContext } from "../../context/GameProvider";
 
@@ -51,6 +57,9 @@ const PlayerConfigCard = ({ color }) => {
     Boolean(pendingMove) &&
     boardState?.turn === color;
 
+  const isMinimax = config.type === "minimax" || config.type === "minimax_simple";
+  const isMcts = config.type === "mcts";
+
   const handlePerformMove = async () => {
     if (!showPerformButton || performing) return;
     setPerforming(true);
@@ -80,16 +89,69 @@ const PlayerConfigCard = ({ color }) => {
 
         {config.type !== "human" && (
           <Stack spacing={2} mt={2}>
-            <Slider
-              value={config.depth}
-              onChange={(_, val) => updatePlayer(color, { depth: val })}
-              onChangeCommitted={(_, val) => syncConfig({ depth: val })}
-              min={2}
-              max={12}
-              step={1}
-              valueLabelDisplay="auto"
-              marks
-            />
+            {isMinimax && (
+              <Slider
+                value={config.depth}
+                onChange={(_, val) => updatePlayer(color, { depth: val })}
+                onChangeCommitted={(_, val) => syncConfig({ depth: val })}
+                min={2}
+                max={12}
+                step={1}
+                valueLabelDisplay="auto"
+                marks
+              />
+            )}
+            {isMcts && (
+              <>
+                <Typography variant="body2">Iterations</Typography>
+                <Slider
+                  value={config.iterations}
+                  onChange={(_, val) => updatePlayer(color, { iterations: val })}
+                  onChangeCommitted={(_, val) => syncConfig({ iterations: val })}
+                  min={50}
+                  max={5000}
+                  step={50}
+                  valueLabelDisplay="auto"
+                  marks
+                />
+                <Typography variant="body2">Rollout depth</Typography>
+                <Slider
+                  value={config.rolloutDepth}
+                  onChange={(_, val) => updatePlayer(color, { rolloutDepth: val })}
+                  onChangeCommitted={(_, val) => syncConfig({ rolloutDepth: val })}
+                  min={10}
+                  max={200}
+                  step={5}
+                  valueLabelDisplay="auto"
+                  marks
+                />
+                <Accordion elevation={0} disableGutters>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">Advanced</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <TextField
+                      label="Exploration constant (C)"
+                      type="number"
+                      size="small"
+                      value={config.explorationConstant}
+                      onChange={event => {
+                        const nextValue = Number(event.target.value);
+                        if (Number.isNaN(nextValue)) return;
+                        updatePlayer(color, { explorationConstant: nextValue });
+                      }}
+                      onBlur={event => {
+                        const nextValue = Number(event.target.value);
+                        if (Number.isNaN(nextValue)) return;
+                        syncConfig({ explorationConstant: nextValue });
+                      }}
+                      inputProps={{ step: 0.1, min: 0.1, max: 10 }}
+                      fullWidth
+                    />
+                  </AccordionDetails>
+                </Accordion>
+              </>
+            )}
             {showPerformButton && (
               <Button variant="contained" onClick={handlePerformMove} disabled={performing}>
                 Perform move

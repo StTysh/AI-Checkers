@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 const API_BASE = "/api";
-const SUPPORTED_AI_TYPES = new Set(["minimax", "minimax_simple"]);
+const SUPPORTED_AI_TYPES = new Set(["minimax", "minimax_simple", "mcts"]);
 
 const handleResponse = async response => {
   if (!response.ok) {
@@ -100,13 +100,24 @@ export const useGameAPI = store => {
           await performPendingRequest(turn);
           continue;
         }
-        await requestAIMove({
+        const payload = {
           color: turn,
           algorithm: config.type,
-          depth: config.depth,
           persist: true,
           commitImmediately: !manualAiApproval,
-        });
+        };
+        if (config.type === "minimax" || config.type === "minimax_simple") {
+          payload.depth = config.depth;
+        }
+        if (config.type === "mcts") {
+          payload.iterations = config.iterations;
+          payload.rolloutDepth = config.rolloutDepth;
+          payload.explorationConstant = config.explorationConstant;
+          if (config.randomSeed !== null && config.randomSeed !== undefined) {
+            payload.randomSeed = config.randomSeed;
+          }
+        }
+        await requestAIMove(payload);
         if (manualAiApproval) break;
         if (store.getState().gameMode !== "aivai") break;
       }

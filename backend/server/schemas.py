@@ -27,6 +27,10 @@ class PlayerConfigPayload(BaseModel):
     moveOrdering: Optional[bool] = None
     iterativeDeepening: Optional[bool] = None
     quiescence: Optional[bool] = None
+    iterations: Optional[int] = Field(default=None, ge=1, le=20000)
+    rolloutDepth: Optional[int] = Field(default=None, ge=1, le=300)
+    explorationConstant: Optional[float] = Field(default=None, ge=0.01, le=10.0)
+    randomSeed: Optional[int] = None
 
 
 class ConfigRequest(BaseModel):
@@ -44,8 +48,12 @@ class ResetRequest(BaseModel):
 
 class AIMoveRequest(BaseModel):
     color: Optional[Literal["white", "black"]] = None
-    algorithm: Literal["minimax", "minimax_simple"] = "minimax"
+    algorithm: Literal["minimax", "minimax_simple", "mcts"] = "minimax"
     depth: Optional[int] = Field(default=None, ge=1, le=16)
+    iterations: Optional[int] = Field(default=None, ge=1, le=20000)
+    rolloutDepth: Optional[int] = Field(default=None, ge=1, le=300)
+    explorationConstant: Optional[float] = Field(default=None, ge=0.01, le=10.0)
+    randomSeed: Optional[int] = None
     persist: bool = True
     commitImmediately: bool = True
 
