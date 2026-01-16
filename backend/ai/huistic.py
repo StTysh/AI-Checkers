@@ -42,9 +42,6 @@ def evaluate_board(board: Board, perspective: Color) -> float:
 
 	mobility = _mobility_scores(board)
 	capture_pressure = _capture_pressure(board)
-	# Convert the accumulated per-color metrics into a perspective score: material,
-	# piece advancement, back-rank guards, centralized control, promotion threats,
-	# safe edge anchors, supported chains, mobility, and immediate capture pressure.
 	score = (
 		material[perspective]
 		- material[opponent]
