@@ -18,6 +18,7 @@ import {
   FormGroup,
   FormControlLabel,
   Switch,
+  Divider,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { PLAYER_KINDS } from "../../utils/constants";
@@ -57,7 +58,7 @@ const PlayerConfigCard = ({ color }) => {
     Boolean(pendingMove) &&
     boardState?.turn === color;
 
-  const isMinimax = config.type === "minimax" || config.type === "minimax_simple";
+  const isMinimax = config.type === "minimax";
   const isMcts = config.type === "mcts";
 
   const handlePerformMove = async () => {
@@ -90,16 +91,179 @@ const PlayerConfigCard = ({ color }) => {
         {config.type !== "human" && (
           <Stack spacing={2} mt={2}>
             {isMinimax && (
-              <Slider
-                value={config.depth}
-                onChange={(_, val) => updatePlayer(color, { depth: val })}
-                onChangeCommitted={(_, val) => syncConfig({ depth: val })}
-                min={2}
-                max={12}
-                step={1}
-                valueLabelDisplay="auto"
-                marks
-              />
+              <>
+                <Typography variant="body2">Max depth</Typography>
+                <Slider
+                  value={config.depth}
+                  onChange={(_, val) => updatePlayer(color, { depth: val })}
+                  onChangeCommitted={(_, val) => syncConfig({ depth: val })}
+                  min={2}
+                  max={12}
+                  step={1}
+                  valueLabelDisplay="auto"
+                  marks
+                />
+                <FormGroup>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={config.alphaBeta}
+                        onChange={event => {
+                          const enabled = event.target.checked;
+                          const updates = { alphaBeta: enabled };
+                          if (!enabled) {
+                            updates.moveOrdering = false;
+                            updates.killerMoves = false;
+                          }
+                          syncConfig(updates);
+                        }}
+                      />
+                    }
+                    label="Enable Alpha–Beta"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={config.transposition}
+                        onChange={event => syncConfig({ transposition: event.target.checked })}
+                      />
+                    }
+                    label="Enable Transposition Table"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={config.moveOrdering}
+                        onChange={event => {
+                          const enabled = event.target.checked;
+                          const updates = { moveOrdering: enabled };
+                          if (!enabled) {
+                            updates.killerMoves = false;
+                          }
+                          syncConfig(updates);
+                        }}
+                        disabled={!config.alphaBeta}
+                      />
+                    }
+                    label="Enable Move Ordering"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={config.killerMoves}
+                        onChange={event => syncConfig({ killerMoves: event.target.checked })}
+                        disabled={!config.alphaBeta || !config.moveOrdering}
+                      />
+                    }
+                    label="Enable Killer Moves"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={config.quiescence}
+                        onChange={event => syncConfig({ quiescence: event.target.checked })}
+                      />
+                    }
+                    label="Enable Quiescence Search"
+                  />
+                </FormGroup>
+                <Accordion elevation={0} disableGutters>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">Search controls</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <FormGroup>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={config.iterativeDeepening}
+                            onChange={event => syncConfig({ iterativeDeepening: event.target.checked })}
+                          />
+                        }
+                        label="Use Iterative Deepening"
+                      />
+                    </FormGroup>
+                    <TextField
+                      label="Time limit (ms)"
+                      type="number"
+                      size="small"
+                      value={config.timeLimitMs}
+                      onChange={event => {
+                        const nextValue = Number(event.target.value);
+                        if (Number.isNaN(nextValue)) return;
+                        updatePlayer(color, { timeLimitMs: nextValue });
+                      }}
+                      onBlur={event => {
+                        const nextValue = Number(event.target.value);
+                        if (Number.isNaN(nextValue)) return;
+                        syncConfig({ timeLimitMs: nextValue });
+                      }}
+                      inputProps={{ step: 50, min: 10, max: 60000 }}
+                      fullWidth
+                      disabled={!config.iterativeDeepening}
+                      sx={{ mt: 2 }}
+                    />
+                    <TextField
+                      label="Max quiescence depth"
+                      type="number"
+                      size="small"
+                      value={config.maxQuiescenceDepth}
+                      onChange={event => {
+                        const nextValue = Number(event.target.value);
+                        if (Number.isNaN(nextValue)) return;
+                        updatePlayer(color, { maxQuiescenceDepth: nextValue });
+                      }}
+                      onBlur={event => {
+                        const nextValue = Number(event.target.value);
+                        if (Number.isNaN(nextValue)) return;
+                        syncConfig({ maxQuiescenceDepth: nextValue });
+                      }}
+                      inputProps={{ step: 1, min: 1, max: 16 }}
+                      fullWidth
+                      sx={{ mt: 2 }}
+                    />
+                  </AccordionDetails>
+                </Accordion>
+                <Accordion elevation={0} disableGutters>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography variant="subtitle2">Parallel search</Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <FormGroup>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={config.parallel}
+                            onChange={event => syncConfig({ parallel: event.target.checked })}
+                          />
+                        }
+                        label="Enable Parallel Search"
+                      />
+                    </FormGroup>
+                    <TextField
+                      label="Workers"
+                      type="number"
+                      size="small"
+                      value={config.workers}
+                      onChange={event => {
+                        const nextValue = Number(event.target.value);
+                        if (Number.isNaN(nextValue)) return;
+                        updatePlayer(color, { workers: nextValue });
+                      }}
+                      onBlur={event => {
+                        const nextValue = Number(event.target.value);
+                        if (Number.isNaN(nextValue)) return;
+                        syncConfig({ workers: nextValue });
+                      }}
+                      inputProps={{ step: 1, min: 1, max: 16 }}
+                      fullWidth
+                      disabled={!config.parallel}
+                      sx={{ mt: 2 }}
+                    />
+                  </AccordionDetails>
+                </Accordion>
+                <Divider />
+              </>
             )}
             {isMcts && (
               <>
@@ -157,53 +321,6 @@ const PlayerConfigCard = ({ color }) => {
                 Perform move
               </Button>
             )}
-            {/* <FormGroup>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={config.alphaBeta}
-                    onChange={event => syncConfig({ alphaBeta: event.target.checked })}
-                  />
-                }
-                label="Alpha-Beta pruning"
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={config.transposition}
-                    onChange={event => syncConfig({ transposition: event.target.checked })}
-                  />
-                }
-                label="Transposition tables"
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={config.moveOrdering}
-                    onChange={event => syncConfig({ moveOrdering: event.target.checked })}
-                  />
-                }
-                label="Move ordering"
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={config.iterativeDeepening}
-                    onChange={event => syncConfig({ iterativeDeepening: event.target.checked })}
-                  />
-                }
-                label="Iterative deepening"
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={config.quiescence}
-                    onChange={event => syncConfig({ quiescence: event.target.checked })}
-                  />
-                }
-                label="Quiescence search"
-              />
-            </FormGroup> */}
           </Stack>
         )}
       </CardContent>

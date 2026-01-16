@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from copy import deepcopy
 from threading import Lock
 from typing import Any, Iterable, Optional
 
-from ai.agents import create_minimax_controller, create_simple_minimax_controller, create_mcts_controller
+from ai.agents import create_minimax_controller, create_mcts_controller
 from core.game import Game
 from core.move import Move
 from core.pieces import Color, Piece
@@ -22,10 +23,15 @@ def _default_player_settings() -> dict[str, Any]:
         "type": "human",
         "depth": 4,
         "alphaBeta": True,
-        "transposition": False,
+        "transposition": True,
         "moveOrdering": True,
+        "killerMoves": True,
         "iterativeDeepening": False,
-        "quiescence": False,
+        "quiescence": True,
+        "maxQuiescenceDepth": 6,
+        "timeLimitMs": 1000,
+        "parallel": False,
+        "workers": 4,
         "iterations": 500,
         "rolloutDepth": 80,
         "explorationConstant": 1.4,
@@ -140,6 +146,26 @@ class GameSession:
             overrides["type"] = payload.algorithm
             if payload.depth is not None:
                 overrides["depth"] = payload.depth
+            if payload.alphaBeta is not None:
+                overrides["alphaBeta"] = payload.alphaBeta
+            if payload.transposition is not None:
+                overrides["transposition"] = payload.transposition
+            if payload.moveOrdering is not None:
+                overrides["moveOrdering"] = payload.moveOrdering
+            if payload.killerMoves is not None:
+                overrides["killerMoves"] = payload.killerMoves
+            if payload.iterativeDeepening is not None:
+                overrides["iterativeDeepening"] = payload.iterativeDeepening
+            if payload.quiescence is not None:
+                overrides["quiescence"] = payload.quiescence
+            if payload.maxQuiescenceDepth is not None:
+                overrides["maxQuiescenceDepth"] = payload.maxQuiescenceDepth
+            if payload.timeLimitMs is not None:
+                overrides["timeLimitMs"] = payload.timeLimitMs
+            if payload.parallel is not None:
+                overrides["parallel"] = payload.parallel
+            if payload.workers is not None:
+                overrides["workers"] = payload.workers
             if payload.iterations is not None:
                 overrides["iterations"] = payload.iterations
             if payload.rolloutDepth is not None:
@@ -258,16 +284,23 @@ class GameSession:
             return PlayerController.human(f"{label} Human")
         if player_type == "minimax":
             depth = int(settings.get("depth") or 4)
+            use_parallel = bool(settings.get("parallel"))
+            workers = int(settings.get("workers") or 1)
+            resolved_workers = self._resolve_parallel_workers(color, use_parallel, workers)
             return create_minimax_controller(
                 label,
                 depth=depth,
-                use_transposition=bool(settings.get("transposition")),
+                use_alpha_beta=bool(settings.get("alphaBeta", True)),
+                use_transposition=bool(settings.get("transposition", True)),
                 use_move_ordering=bool(settings.get("moveOrdering", True)),
-                use_quiescence=bool(settings.get("quiescence")),
+                use_killer_moves=bool(settings.get("killerMoves", True)),
+                use_quiescence=bool(settings.get("quiescence", True)),
+                max_quiescence_depth=int(settings.get("maxQuiescenceDepth") or 6),
+                use_iterative_deepening=bool(settings.get("iterativeDeepening")),
+                time_limit_ms=int(settings.get("timeLimitMs") or 1000),
+                use_parallel=use_parallel,
+                workers=resolved_workers,
             )
-        if player_type == "minimax_simple":
-            depth = int(settings.get("depth") or 4)
-            return create_simple_minimax_controller(label, depth=depth)
         if player_type == "mcts":
             iterations = int(settings.get("iterations") or 500)
             rollout_depth = int(settings.get("rolloutDepth") or 80)
@@ -281,3 +314,14 @@ class GameSession:
                 random_seed=random_seed,
             )
         raise ValueError(f"Player type '{player_type}' not implemented yet.")
+
+    def _resolve_parallel_workers(self, color: Color, use_parallel: bool, requested: int) -> int:
+        if not use_parallel:
+            return 1
+        cpu_total = os.cpu_count() or 1
+        global_max = max(1, cpu_total - 2)
+        other_color = Color.BLACK if color == Color.WHITE else Color.WHITE
+        other_settings = self.player_settings.get(other_color, {})
+        other_parallel = bool(other_settings.get("parallel"))
+        share = max(1, global_max // 2) if other_parallel else global_max
+        return min(max(1, requested), share)

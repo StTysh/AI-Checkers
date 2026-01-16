@@ -9,16 +9,7 @@ const GameStoreContext = createContext(null);
 const cloneDefaultPlayerConfig = () => JSON.parse(JSON.stringify(DEFAULT_PLAYER_CONFIG));
 const FIRST_AI_TYPE = PLAYER_KINDS.find(option => option.value !== "human" && !option.disabled)?.value || "minimax";
 
-const getStoredGameMode = () => {
-  if (typeof window === "undefined") return GAME_MODES[0].value;
-  const stored = window.localStorage.getItem("gameMode");
-  return GAME_MODES.some(mode => mode.value === stored) ? stored : GAME_MODES[0].value;
-};
-
-const persistGameMode = mode => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem("gameMode", mode);
-};
+const getStoredGameMode = () => GAME_MODES[0].value;
 
 const enforcePvaiPairing = (state, changedColor) => {
   if (state.gameMode !== "pvai" || !changedColor) return;
@@ -82,7 +73,6 @@ const useGameStore = create(
           state.playerConfig.white.type = FIRST_AI_TYPE;
           state.playerConfig.black.type = FIRST_AI_TYPE;
         }
-        persistGameMode(mode);
       }),
     setVariant: variant => set({ variant }),
     updatePlayerConfig: (color, changes) =>

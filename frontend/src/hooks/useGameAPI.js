@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 const API_BASE = "/api";
-const SUPPORTED_AI_TYPES = new Set(["minimax", "minimax_simple", "mcts"]);
+const SUPPORTED_AI_TYPES = new Set(["minimax", "mcts"]);
 
 const handleResponse = async response => {
   if (!response.ok) {
@@ -106,8 +106,18 @@ export const useGameAPI = store => {
           persist: true,
           commitImmediately: !manualAiApproval,
         };
-        if (config.type === "minimax" || config.type === "minimax_simple") {
+        if (config.type === "minimax") {
           payload.depth = config.depth;
+          payload.alphaBeta = config.alphaBeta;
+          payload.transposition = config.transposition;
+          payload.moveOrdering = config.moveOrdering;
+          payload.killerMoves = config.killerMoves;
+          payload.iterativeDeepening = config.iterativeDeepening;
+          payload.quiescence = config.quiescence;
+          payload.maxQuiescenceDepth = config.maxQuiescenceDepth;
+          payload.timeLimitMs = config.timeLimitMs;
+          payload.parallel = config.parallel;
+          payload.workers = config.workers;
         }
         if (config.type === "mcts") {
           payload.iterations = config.iterations;

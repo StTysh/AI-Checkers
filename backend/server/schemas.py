@@ -19,14 +19,19 @@ class MoveRequest(BaseModel):
 
 class PlayerConfigPayload(BaseModel):
     type: Optional[
-        Literal["human", "minimax", "minimax_simple", "mcts", "genetic", "reinforcement", "remote"]
+        Literal["human", "minimax", "mcts", "genetic", "reinforcement", "remote"]
     ] = None
     depth: Optional[int] = Field(default=None, ge=1, le=16)
     alphaBeta: Optional[bool] = None
     transposition: Optional[bool] = None
     moveOrdering: Optional[bool] = None
+    killerMoves: Optional[bool] = None
     iterativeDeepening: Optional[bool] = None
     quiescence: Optional[bool] = None
+    maxQuiescenceDepth: Optional[int] = Field(default=None, ge=1, le=16)
+    timeLimitMs: Optional[int] = Field(default=None, ge=10, le=60000)
+    parallel: Optional[bool] = None
+    workers: Optional[int] = Field(default=None, ge=1, le=64)
     iterations: Optional[int] = Field(default=None, ge=1, le=20000)
     rolloutDepth: Optional[int] = Field(default=None, ge=1, le=300)
     explorationConstant: Optional[float] = Field(default=None, ge=0.01, le=10.0)
@@ -48,8 +53,18 @@ class ResetRequest(BaseModel):
 
 class AIMoveRequest(BaseModel):
     color: Optional[Literal["white", "black"]] = None
-    algorithm: Literal["minimax", "minimax_simple", "mcts"] = "minimax"
+    algorithm: Literal["minimax", "mcts"] = "minimax"
     depth: Optional[int] = Field(default=None, ge=1, le=16)
+    alphaBeta: Optional[bool] = None
+    transposition: Optional[bool] = None
+    moveOrdering: Optional[bool] = None
+    killerMoves: Optional[bool] = None
+    iterativeDeepening: Optional[bool] = None
+    quiescence: Optional[bool] = None
+    maxQuiescenceDepth: Optional[int] = Field(default=None, ge=1, le=16)
+    timeLimitMs: Optional[int] = Field(default=None, ge=10, le=60000)
+    parallel: Optional[bool] = None
+    workers: Optional[int] = Field(default=None, ge=1, le=64)
     iterations: Optional[int] = Field(default=None, ge=1, le=20000)
     rolloutDepth: Optional[int] = Field(default=None, ge=1, le=300)
     explorationConstant: Optional[float] = Field(default=None, ge=0.01, le=10.0)

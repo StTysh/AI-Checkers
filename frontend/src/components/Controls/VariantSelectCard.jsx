@@ -31,7 +31,7 @@ const VariantSelectCard = () => {
   };
 
   return (
-    <Card>
+    <Card sx={{ height: "100%" }}>
       <CardHeader title="Game Variant" subheader="Swap rulesets on the fly" />
       <CardContent>
         <FormControl fullWidth size="small">

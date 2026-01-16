@@ -37,7 +37,7 @@ const GameModeCard = () => {
   };
 
   return (
-    <Card>
+    <Card sx={{ height: "100%" }}>
       <CardHeader title="Game Mode" subheader="Choose who controls each side" />
       <CardContent>
         <FormControl fullWidth size="small">

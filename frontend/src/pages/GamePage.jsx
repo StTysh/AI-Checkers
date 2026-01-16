@@ -2,10 +2,8 @@ import { Box, Container, Grid } from "@mui/material";
 import Header from "../components/UI/Header";
 import Footer from "../components/UI/Footer";
 import Board from "../components/Board/Board";
-import GameModeCard from "../components/Controls/GameModeCard";
 import PlayerConfigCard from "../components/Controls/PlayerConfigCard";
-import VariantSelectCard from "../components/Controls/VariantSelectCard";
-import GameActionsCard from "../components/Controls/GameActionsCard";
+import GameSetupCard from "../components/Controls/GameSetupCard";
 import GameOverDialog from "../components/Dialogs/GameOverDialog";
 import ThemeSwitcher from "../components/UI/ThemeSwitcher";
 
@@ -19,11 +17,15 @@ const GamePage = () => {
         </Grid>
         <Grid item xs={12} lg={5}>
           <Box display="flex" flexDirection="column" gap={3}>
-            <GameModeCard />
-            <PlayerConfigCard color="white" />
-            <PlayerConfigCard color="black" />
-            <VariantSelectCard />
-            <GameActionsCard />
+            <GameSetupCard />
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <PlayerConfigCard color="white" />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <PlayerConfigCard color="black" />
+              </Grid>
+            </Grid>
             <ThemeSwitcher />
           </Box>
         </Grid>

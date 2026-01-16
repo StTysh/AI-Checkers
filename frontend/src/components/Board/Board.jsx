@@ -44,7 +44,7 @@ const Board = () => {
           </Box>
           <Box sx={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 20 }}>
             {pieces.map(piece => (
-              <Piece key={piece.id} piece={piece} boardSize={boardSize} />
+              <Piece key={piece.id} piece={piece} boardSize={boardSize} lastMove={boardState.lastMove} />
             ))}
           </Box>
         </Box>
