@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+import csv
+import io
+import time
+import uuid
+import threading
+import random
 from copy import deepcopy
 from threading import Lock
 from typing import Any, Iterable, Optional
@@ -12,7 +18,16 @@ from core.move import Move
 from core.pieces import Color, Piece
 from core.player import PlayerController
 
-from .schemas import AIMoveRequest, ConfigRequest, MoveRequest, PerformAIMoveRequest, ResetRequest, VariantRequest
+from .schemas import (
+    AIMoveRequest,
+    ConfigRequest,
+    MoveRequest,
+    PerformAIMoveRequest,
+    ResetRequest,
+    VariantRequest,
+    EvaluationStartRequest,
+    EvaluationStopRequest,
+)
 from .serializers import serialize_game, serialize_move
 
 VARIANT_TO_SIZE = {"british": 8, "international": 10}
@@ -36,6 +51,12 @@ def _default_player_settings() -> dict[str, Any]:
         "rolloutDepth": 80,
         "explorationConstant": 1.4,
         "randomSeed": None,
+        "mctsParallel": False,
+        "mctsWorkers": 4,
+        "rolloutPolicy": "random",
+        "guidanceDepth": 2,
+        "rolloutCutoffDepth": 40,
+        "leafEvaluation": "random_terminal",
     }
 
 
@@ -51,6 +72,28 @@ class PendingAIMove:
 	color: Color
 	move: Move
 	start: tuple[int, int]
+
+
+@dataclass
+class EvaluationResult:
+    index: int
+    winner: Optional[str]
+    move_count: int
+    duration_seconds: float
+    avg_move_time_white: float
+    avg_move_time_black: float
+    starting_color: str
+
+
+@dataclass
+class EvaluationState:
+    evaluation_id: str
+    config: dict[str, Any]
+    total_games: int
+    results: list[EvaluationResult]
+    running: bool
+    stop_event: threading.Event
+    thread: Optional[threading.Thread] = None
 
 
 class GameSession:
@@ -69,6 +112,8 @@ class GameSession:
             Color.WHITE: None,
             Color.BLACK: None,
         }
+        self._evaluation_lock = Lock()
+        self._evaluations: dict[str, EvaluationState] = {}
 
     # public API ---------------------------------------------------------
 
@@ -174,6 +219,18 @@ class GameSession:
                 overrides["explorationConstant"] = payload.explorationConstant
             if payload.randomSeed is not None:
                 overrides["randomSeed"] = payload.randomSeed
+            if payload.mctsParallel is not None:
+                overrides["mctsParallel"] = payload.mctsParallel
+            if payload.mctsWorkers is not None:
+                overrides["mctsWorkers"] = payload.mctsWorkers
+            if payload.rolloutPolicy is not None:
+                overrides["rolloutPolicy"] = payload.rolloutPolicy
+            if payload.guidanceDepth is not None:
+                overrides["guidanceDepth"] = payload.guidanceDepth
+            if payload.rolloutCutoffDepth is not None:
+                overrides["rolloutCutoffDepth"] = payload.rolloutCutoffDepth
+            if payload.leafEvaluation is not None:
+                overrides["leafEvaluation"] = payload.leafEvaluation
             controller = self._controller_from_settings(color, overrides)
             self.game.setPlayer(color, controller)
             if payload.persist:
@@ -225,6 +282,88 @@ class GameSession:
             self.game.undoMove()
             self._clear_pending_ai_moves()
             return self._serialize_locked()
+
+    def start_evaluation(self, payload: EvaluationStartRequest) -> dict[str, Any]:
+        config = payload.model_dump()
+        evaluation_id = str(uuid.uuid4())
+        state = EvaluationState(
+            evaluation_id=evaluation_id,
+            config=config,
+            total_games=payload.games,
+            results=[],
+            running=True,
+            stop_event=threading.Event(),
+        )
+
+        thread = threading.Thread(
+            target=self._run_evaluation,
+            args=(state,),
+            daemon=True,
+        )
+        state.thread = thread
+
+        with self._evaluation_lock:
+            self._evaluations[evaluation_id] = state
+
+        thread.start()
+        return self._evaluation_status_payload(state)
+
+    def stop_evaluation(self, payload: EvaluationStopRequest) -> dict[str, Any]:
+        with self._evaluation_lock:
+            state = self._evaluations.get(payload.evaluationId)
+        if not state:
+            raise ValueError("Unknown evaluation id.")
+        state.stop_event.set()
+        return self._evaluation_status_payload(state)
+
+    def get_evaluation_status(self, evaluation_id: str) -> dict[str, Any]:
+        with self._evaluation_lock:
+            state = self._evaluations.get(evaluation_id)
+        if not state:
+            raise ValueError("Unknown evaluation id.")
+        return self._evaluation_status_payload(state)
+
+    def get_evaluation_results(self, evaluation_id: str, format: str) -> tuple[str, str]:
+        with self._evaluation_lock:
+            state = self._evaluations.get(evaluation_id)
+        if not state:
+            raise ValueError("Unknown evaluation id.")
+        if format not in {"csv", "json"}:
+            raise ValueError("Unsupported format.")
+
+        payload = self._evaluation_status_payload(state)
+        if format == "json":
+            return "application/json", payload
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["meta", "variant", state.config.get("variant")])
+        writer.writerow(["meta", "games", state.total_games])
+        writer.writerow(["meta", "startPolicy", state.config.get("startPolicy")])
+        writer.writerow(["meta", "randomSeed", state.config.get("randomSeed")])
+        writer.writerow(["meta", "randomizeOpening", state.config.get("randomizeOpening")])
+        writer.writerow(["meta", "randomizePlies", state.config.get("randomizePlies")])
+        writer.writerow([])
+        writer.writerow([
+            "index",
+            "winner",
+            "move_count",
+            "duration_seconds",
+            "avg_move_time_white",
+            "avg_move_time_black",
+            "starting_color",
+        ])
+        for result in state.results:
+            writer.writerow([
+                result.index,
+                result.winner or "draw",
+                result.move_count,
+                f"{result.duration_seconds:.4f}",
+                f"{result.avg_move_time_white:.4f}",
+                f"{result.avg_move_time_black:.4f}",
+                result.starting_color,
+            ])
+        return "text/csv", output.getvalue()
 
     # helpers ------------------------------------------------------------
 
@@ -306,14 +445,168 @@ class GameSession:
             rollout_depth = int(settings.get("rolloutDepth") or 80)
             exploration_constant = float(settings.get("explorationConstant") or 1.4)
             random_seed = settings.get("randomSeed")
+            mcts_parallel = bool(settings.get("mctsParallel"))
+            mcts_workers = int(settings.get("mctsWorkers") or 1)
+            rollout_policy = settings.get("rolloutPolicy") or "random"
+            guidance_depth = int(settings.get("guidanceDepth") or 1)
+            rollout_cutoff_depth = settings.get("rolloutCutoffDepth")
+            leaf_evaluation = settings.get("leafEvaluation") or "random_terminal"
             return create_mcts_controller(
                 label,
                 iterations=iterations,
                 rollout_depth=rollout_depth,
                 exploration_constant=exploration_constant,
                 random_seed=random_seed,
+                use_parallel=mcts_parallel,
+                workers=mcts_workers,
+                rollout_policy=rollout_policy,
+                guidance_depth=guidance_depth,
+                rollout_cutoff_depth=rollout_cutoff_depth,
+                leaf_evaluation=leaf_evaluation,
             )
         raise ValueError(f"Player type '{player_type}' not implemented yet.")
+
+    def _run_evaluation(self, state: EvaluationState) -> None:
+        config = state.config
+        variant = config["variant"]
+        start_policy = config.get("startPolicy", "alternate")
+        random_seed = config.get("randomSeed")
+        randomize_opening = bool(config.get("randomizeOpening"))
+        randomize_plies = int(config.get("randomizePlies") or 0)
+        total_games = state.total_games
+
+        rng = random.Random(random_seed) if random_seed is not None else random.Random()
+
+        for index in range(1, total_games + 1):
+            if state.stop_event.is_set():
+                break
+
+            game = Game(board_size=VARIANT_TO_SIZE[variant])
+            white_settings = config["white"]
+            black_settings = config["black"]
+
+            white_controller = self._controller_from_settings(Color.WHITE, white_settings)
+            black_controller = self._controller_from_settings(Color.BLACK, black_settings)
+            game.setPlayer(Color.WHITE, white_controller)
+            game.setPlayer(Color.BLACK, black_controller)
+
+            starting_color = Color.WHITE
+            if start_policy == "black" or (start_policy == "alternate" and index % 2 == 0):
+                starting_color = Color.BLACK
+                game.board.turn = Color.BLACK
+                game.current_player = Color.BLACK
+
+            move_cap = 300
+            total_time_white = 0.0
+            total_time_black = 0.0
+            moves_white = 0
+            moves_black = 0
+            start_time = time.perf_counter()
+
+            for ply in range(move_cap):
+                if state.stop_event.is_set():
+                    break
+
+                winner = game.board.is_game_over()
+                if winner is not None:
+                    game.winner = winner
+                    break
+
+                controller = game.currentController()
+                if randomize_opening and rng and ply < randomize_plies:
+                    moves_map = game.board.getAllValidMoves(game.current_player)
+                    moves = [move for moves in moves_map.values() for move in moves]
+                    if not moves:
+                        break
+                    move = rng.choice(moves)
+                    piece = game.board.getPiece(*move.start)
+                    if piece is None:
+                        break
+                    game.makeMove(piece, move)
+                    continue
+
+                move_start = time.perf_counter()
+                decision = controller.select_move(game)
+                move_end = time.perf_counter()
+                if decision is None:
+                    break
+
+                piece, move = decision
+                mover_color = piece.color
+                if not game.makeMove(piece, move):
+                    break
+
+                elapsed = move_end - move_start
+                if controller.kind.value == "human":
+                    continue
+                if mover_color == Color.WHITE:
+                    total_time_white += elapsed
+                    moves_white += 1
+                else:
+                    total_time_black += elapsed
+                    moves_black += 1
+
+            duration = time.perf_counter() - start_time
+            winner = game.winner.value if game.winner else None
+            avg_white = total_time_white / max(1, moves_white)
+            avg_black = total_time_black / max(1, moves_black)
+
+            state.results.append(
+                EvaluationResult(
+                    index=index,
+                    winner=winner,
+                    move_count=len(game.move_history),
+                    duration_seconds=duration,
+                    avg_move_time_white=avg_white,
+                    avg_move_time_black=avg_black,
+                    starting_color=starting_color.value,
+                )
+            )
+
+        state.running = False
+
+    def _evaluation_status_payload(self, state: EvaluationState) -> dict[str, Any]:
+        white_wins = sum(1 for result in state.results if result.winner == "white")
+        black_wins = sum(1 for result in state.results if result.winner == "black")
+        draws = sum(1 for result in state.results if result.winner is None)
+        total = max(1, len(state.results))
+        avg_moves = sum(result.move_count for result in state.results) / total
+        avg_duration = sum(result.duration_seconds for result in state.results) / total
+        avg_white_time = sum(result.avg_move_time_white for result in state.results) / total
+        avg_black_time = sum(result.avg_move_time_black for result in state.results) / total
+
+        return {
+            "evaluationId": state.evaluation_id,
+            "running": state.running,
+            "completedGames": len(state.results),
+            "totalGames": state.total_games,
+            "config": state.config,
+            "score": {
+                "whiteWins": white_wins,
+                "blackWins": black_wins,
+                "draws": draws,
+            },
+            "summary": {
+                "avgMoves": avg_moves,
+                "avgDuration": avg_duration,
+                "avgMoveTimeWhite": avg_white_time,
+                "avgMoveTimeBlack": avg_black_time,
+                "winRateWhite": white_wins / total,
+                "winRateBlack": black_wins / total,
+            },
+            "results": [
+                {
+                    "index": result.index,
+                    "winner": result.winner,
+                    "moveCount": result.move_count,
+                    "durationSeconds": result.duration_seconds,
+                    "avgMoveTimeWhite": result.avg_move_time_white,
+                    "avgMoveTimeBlack": result.avg_move_time_black,
+                    "startingColor": result.starting_color,
+                }
+                for result in state.results
+            ],
+        }
 
     def _resolve_parallel_workers(self, color: Color, use_parallel: bool, requested: int) -> int:
         if not use_parallel:

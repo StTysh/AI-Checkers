@@ -3,9 +3,19 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
-from .schemas import AIMoveRequest, ConfigRequest, MoveRequest, PerformAIMoveRequest, ResetRequest, VariantRequest
+from .schemas import (
+    AIMoveRequest,
+    ConfigRequest,
+    MoveRequest,
+    PerformAIMoveRequest,
+    ResetRequest,
+    VariantRequest,
+    EvaluationStartRequest,
+    EvaluationStopRequest,
+)
 from .session import GameSession
 
 
@@ -91,6 +101,41 @@ def create_app() -> FastAPI:
             return session.configure_players(payload)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/evaluate/start")
+    def evaluate_start(payload: EvaluationStartRequest, session: GameSession = Depends(get_session)):
+        try:
+            return session.start_evaluation(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/evaluate/status")
+    def evaluate_status(evaluation_id: str = Query(..., alias="evaluation_id"), session: GameSession = Depends(get_session)):
+        try:
+            return session.get_evaluation_status(evaluation_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/evaluate/stop")
+    def evaluate_stop(payload: EvaluationStopRequest, session: GameSession = Depends(get_session)):
+        try:
+            return session.stop_evaluation(payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/evaluate/results")
+    def evaluate_results(
+        evaluation_id: str = Query(..., alias="evaluation_id"),
+        format: str = Query("csv", pattern="^(csv|json)$"),
+        session: GameSession = Depends(get_session),
+    ):
+        try:
+            content_type, payload = session.get_evaluation_results(evaluation_id, format)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if content_type == "application/json":
+            return payload
+        return Response(content=payload, media_type=content_type)
 
     return app
 

@@ -291,27 +291,120 @@ const PlayerConfigCard = ({ color }) => {
                 />
                 <Accordion elevation={0} disableGutters>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Typography variant="subtitle2">Advanced</Typography>
+                    <Typography variant="subtitle2">Advanced MCTS Settings</Typography>
                   </AccordionSummary>
                   <AccordionDetails>
-                    <TextField
-                      label="Exploration constant (C)"
-                      type="number"
-                      size="small"
-                      value={config.explorationConstant}
-                      onChange={event => {
-                        const nextValue = Number(event.target.value);
-                        if (Number.isNaN(nextValue)) return;
-                        updatePlayer(color, { explorationConstant: nextValue });
-                      }}
-                      onBlur={event => {
-                        const nextValue = Number(event.target.value);
-                        if (Number.isNaN(nextValue)) return;
-                        syncConfig({ explorationConstant: nextValue });
-                      }}
-                      inputProps={{ step: 0.1, min: 0.1, max: 10 }}
-                      fullWidth
-                    />
+                    <Stack spacing={2}>
+                      <TextField
+                        label="Exploration constant (C)"
+                        type="number"
+                        size="small"
+                        value={config.explorationConstant}
+                        onChange={event => {
+                          const nextValue = Number(event.target.value);
+                          if (Number.isNaN(nextValue)) return;
+                          updatePlayer(color, { explorationConstant: nextValue });
+                        }}
+                        onBlur={event => {
+                          const nextValue = Number(event.target.value);
+                          if (Number.isNaN(nextValue)) return;
+                          syncConfig({ explorationConstant: nextValue });
+                        }}
+                        inputProps={{ step: 0.1, min: 0.1, max: 10 }}
+                        fullWidth
+                      />
+                      <FormGroup>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={config.mctsParallel}
+                              onChange={event => syncConfig({ mctsParallel: event.target.checked })}
+                            />
+                          }
+                          label="Enable Parallel MCTS"
+                        />
+                      </FormGroup>
+                      <TextField
+                        label="Workers"
+                        type="number"
+                        size="small"
+                        value={config.mctsWorkers}
+                        onChange={event => {
+                          const nextValue = Number(event.target.value);
+                          if (Number.isNaN(nextValue)) return;
+                          updatePlayer(color, { mctsWorkers: nextValue });
+                        }}
+                        onBlur={event => {
+                          const nextValue = Number(event.target.value);
+                          if (Number.isNaN(nextValue)) return;
+                          syncConfig({ mctsWorkers: nextValue });
+                        }}
+                        inputProps={{ step: 1, min: 1, max: 16 }}
+                        fullWidth
+                        disabled={!config.mctsParallel}
+                      />
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Rollout policy</InputLabel>
+                        <Select
+                          value={config.rolloutPolicy}
+                          label="Rollout policy"
+                          onChange={event => syncConfig({ rolloutPolicy: event.target.value })}
+                        >
+                          <MenuItem value="random">Random</MenuItem>
+                          <MenuItem value="heuristic">Heuristic</MenuItem>
+                          <MenuItem value="minimax_guided">Minimax-guided</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        label="Guidance depth"
+                        type="number"
+                        size="small"
+                        value={config.guidanceDepth}
+                        onChange={event => {
+                          const nextValue = Number(event.target.value);
+                          if (Number.isNaN(nextValue)) return;
+                          updatePlayer(color, { guidanceDepth: nextValue });
+                        }}
+                        onBlur={event => {
+                          const nextValue = Number(event.target.value);
+                          if (Number.isNaN(nextValue)) return;
+                          syncConfig({ guidanceDepth: nextValue });
+                        }}
+                        inputProps={{ step: 1, min: 1, max: 4 }}
+                        fullWidth
+                        disabled={config.rolloutPolicy !== "minimax_guided"}
+                      />
+                      <TextField
+                        label="Rollout cutoff depth"
+                        type="number"
+                        size="small"
+                        value={config.rolloutCutoffDepth}
+                        onChange={event => {
+                          const nextValue = Number(event.target.value);
+                          if (Number.isNaN(nextValue)) return;
+                          updatePlayer(color, { rolloutCutoffDepth: nextValue });
+                        }}
+                        onBlur={event => {
+                          const nextValue = Number(event.target.value);
+                          if (Number.isNaN(nextValue)) return;
+                          syncConfig({ rolloutCutoffDepth: nextValue });
+                        }}
+                        inputProps={{ step: 1, min: 1, max: 200 }}
+                        fullWidth
+                      />
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Leaf evaluation</InputLabel>
+                        <Select
+                          value={config.leafEvaluation}
+                          label="Leaf evaluation"
+                          onChange={event => syncConfig({ leafEvaluation: event.target.value })}
+                        >
+                          <MenuItem value="random_terminal">Random terminal</MenuItem>
+                          <MenuItem value="heuristic_eval">Heuristic eval</MenuItem>
+                          <MenuItem value="minimax_eval">Minimax eval</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Stack>
                   </AccordionDetails>
                 </Accordion>
               </>

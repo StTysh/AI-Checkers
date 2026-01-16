@@ -4,6 +4,9 @@ import math
 import random
 from dataclasses import dataclass, field
 from typing import Iterable, Optional, Tuple
+from concurrent.futures import ThreadPoolExecutor
+
+from .huistic import evaluate_board
 
 from core.board import Board
 from core.game import Game
@@ -49,6 +52,12 @@ def select_move(
     rollout_depth: int = 80,
     exploration_constant: float = 1.4,
     random_seed: Optional[int] = None,
+    use_parallel: bool = False,
+    workers: int = 1,
+    rollout_policy: str = "random",
+    guidance_depth: int = 1,
+    rollout_cutoff_depth: Optional[int] = None,
+    leaf_evaluation: str = "random_terminal",
 ) -> Optional[Tuple[Piece, Move]]:
     """Return the best move found by Monte Carlo Tree Search.
 
@@ -65,6 +74,58 @@ def select_move(
     if not moves_map:
         return None
 
+    if use_parallel and workers > 1:
+        stats = _parallel_search(
+            root_board,
+            root_player,
+            iterations,
+            rollout_depth,
+            exploration_constant,
+            random_seed,
+            workers,
+            rollout_policy,
+            guidance_depth,
+            rollout_cutoff_depth,
+            leaf_evaluation,
+        )
+        if not stats:
+            return None
+        best_move = max(stats.items(), key=lambda item: item[1])[0]
+    else:
+        best_move = _search_single(
+            root_board,
+            root_player,
+            iterations,
+            rollout_depth,
+            exploration_constant,
+            random_seed,
+            rollout_policy,
+            guidance_depth,
+            rollout_cutoff_depth,
+            leaf_evaluation,
+        )
+
+    if best_move is None:
+        return None
+
+    piece = game.board.getPiece(*best_move.start)
+    if piece is None:
+        return None
+    return (piece, best_move)
+
+
+def _search_single(
+    root_board: Board,
+    root_player: Color,
+    iterations: int,
+    rollout_depth: int,
+    exploration_constant: float,
+    random_seed: Optional[int],
+    rollout_policy: str,
+    guidance_depth: int,
+    rollout_cutoff_depth: Optional[int],
+    leaf_evaluation: str,
+) -> Optional[Move]:
     rng = random.Random(random_seed)
     root = MCTSNode(board=root_board)
 
@@ -85,7 +146,16 @@ def select_move(
             node = child
 
         # Simulation
-        reward = _rollout(node.board, root_player, rollout_depth, rng)
+        reward = _rollout(
+            node.board,
+            root_player,
+            rollout_depth,
+            rng,
+            rollout_policy,
+            guidance_depth,
+            rollout_cutoff_depth,
+            leaf_evaluation,
+        )
 
         # Backpropagation
         while node is not None:
@@ -95,16 +165,49 @@ def select_move(
 
     if not root.children:
         return None
-
     best_child = max(root.children, key=lambda child: child.visits)
-    best_move = best_child.move
-    if best_move is None:
-        return None
+    return best_child.move
 
-    piece = game.board.getPiece(*best_move.start)
-    if piece is None:
-        return None
-    return (piece, best_move)
+
+def _parallel_search(
+    root_board: Board,
+    root_player: Color,
+    iterations: int,
+    rollout_depth: int,
+    exploration_constant: float,
+    random_seed: Optional[int],
+    workers: int,
+    rollout_policy: str,
+    guidance_depth: int,
+    rollout_cutoff_depth: Optional[int],
+    leaf_evaluation: str,
+) -> dict[Move, int]:
+    workers = max(1, workers)
+    per_worker = max(1, iterations // workers)
+
+    def _worker(seed_offset: int) -> dict[Move, int]:
+        move = _search_single(
+            root_board,
+            root_player,
+            per_worker,
+            rollout_depth,
+            exploration_constant,
+            None if random_seed is None else random_seed + seed_offset,
+            rollout_policy,
+            guidance_depth,
+            rollout_cutoff_depth,
+            leaf_evaluation,
+        )
+        return {move: 1} if move else {}
+
+    stats: dict[Move, int] = {}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(_worker, idx) for idx in range(workers)]
+        for future in futures:
+            result = future.result()
+            for move, count in result.items():
+                stats[move] = stats.get(move, 0) + count
+    return stats
 
 
 def _rollout(
@@ -112,29 +215,49 @@ def _rollout(
     root_player: Color,
     rollout_depth: int,
     rng: random.Random,
+    rollout_policy: str,
+    guidance_depth: int,
+    rollout_cutoff_depth: Optional[int],
+    leaf_evaluation: str,
 ) -> float:
     current = board
 
-    for _ in range(rollout_depth):
+    cutoff = rollout_cutoff_depth if rollout_cutoff_depth is not None else rollout_depth
+
+    for ply in range(rollout_depth):
         winner = current.is_game_over()
         if winner is not None:
             return _reward(winner, root_player)
+
+        if ply >= cutoff:
+            return _leaf_value(current, root_player, guidance_depth, leaf_evaluation)
 
         moves_map = current.getAllValidMoves(current.turn)
         if not moves_map:
             return 0.0
 
-        move = _choose_rollout_move(current, moves_map, rng)
+        move = _choose_rollout_move(current, moves_map, rng, rollout_policy, guidance_depth)
         current = current.simulateMove(move)
 
-    return 0.0
+    return _leaf_value(current, root_player, guidance_depth, leaf_evaluation)
 
 
 def _choose_rollout_move(
     board: Board,
     moves_map: dict[Piece, Iterable[Move]],
     rng: random.Random,
+    rollout_policy: str,
+    guidance_depth: int,
 ) -> Move:
+    if rollout_policy == "minimax_guided":
+        guided = _choose_guided_move(board, moves_map, guidance_depth)
+        if guided is not None:
+            return guided
+    if rollout_policy == "heuristic":
+        guided = _choose_guided_move(board, moves_map, 1)
+        if guided is not None:
+            return guided
+
     moves = _collect_moves(moves_map)
     capture_moves = [move for move in moves if move.is_capture]
     if capture_moves:
@@ -145,6 +268,63 @@ def _choose_rollout_move(
         return rng.choice(promotion_moves)
 
     return rng.choice(moves)
+
+
+def _choose_guided_move(
+    board: Board,
+    moves_map: dict[Piece, Iterable[Move]],
+    depth: int,
+) -> Optional[Move]:
+    moves = _collect_moves(moves_map)
+    if not moves:
+        return None
+
+    current_player = board.turn
+    best_move = None
+    best_score = -math.inf
+    for move in moves:
+        child = board.simulateMove(move)
+        score = _minimax_eval(child, current_player, depth - 1)
+        if score > best_score:
+            best_score = score
+            best_move = move
+    return best_move
+
+
+def _minimax_eval(board: Board, maximizing_color: Color, depth: int) -> float:
+    winner = board.is_game_over()
+    if winner is not None:
+        return 1.0 if winner == maximizing_color else -1.0
+
+    if depth <= 0:
+        return _normalize_eval(evaluate_board(board, maximizing_color))
+
+    moves_map = board.getAllValidMoves(board.turn)
+    if not moves_map:
+        return _normalize_eval(evaluate_board(board, maximizing_color))
+
+    if board.turn == maximizing_color:
+        value = -math.inf
+        for move in _collect_moves(moves_map):
+            value = max(value, _minimax_eval(board.simulateMove(move), maximizing_color, depth - 1))
+        return value
+
+    value = math.inf
+    for move in _collect_moves(moves_map):
+        value = min(value, _minimax_eval(board.simulateMove(move), maximizing_color, depth - 1))
+    return value
+
+
+def _leaf_value(board: Board, root_player: Color, guidance_depth: int, leaf_evaluation: str) -> float:
+    if leaf_evaluation == "heuristic_eval":
+        return _normalize_eval(evaluate_board(board, root_player))
+    if leaf_evaluation == "minimax_eval":
+        return _minimax_eval(board, root_player, guidance_depth)
+    return 0.0
+
+
+def _normalize_eval(score: float) -> float:
+    return max(-1.0, min(1.0, score / 1000.0))
 
 
 def _collect_moves(moves_map: dict[Piece, Iterable[Move]]) -> list[Move]:

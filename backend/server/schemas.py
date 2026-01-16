@@ -36,6 +36,12 @@ class PlayerConfigPayload(BaseModel):
     rolloutDepth: Optional[int] = Field(default=None, ge=1, le=300)
     explorationConstant: Optional[float] = Field(default=None, ge=0.01, le=10.0)
     randomSeed: Optional[int] = None
+    mctsParallel: Optional[bool] = None
+    mctsWorkers: Optional[int] = Field(default=None, ge=1, le=64)
+    rolloutPolicy: Optional[Literal["random", "heuristic", "minimax_guided"]] = None
+    guidanceDepth: Optional[int] = Field(default=None, ge=1, le=4)
+    rolloutCutoffDepth: Optional[int] = Field(default=None, ge=1, le=300)
+    leafEvaluation: Optional[Literal["random_terminal", "heuristic_eval", "minimax_eval"]] = None
 
 
 class ConfigRequest(BaseModel):
@@ -69,9 +75,31 @@ class AIMoveRequest(BaseModel):
     rolloutDepth: Optional[int] = Field(default=None, ge=1, le=300)
     explorationConstant: Optional[float] = Field(default=None, ge=0.01, le=10.0)
     randomSeed: Optional[int] = None
+    mctsParallel: Optional[bool] = None
+    mctsWorkers: Optional[int] = Field(default=None, ge=1, le=64)
+    rolloutPolicy: Optional[Literal["random", "heuristic", "minimax_guided"]] = None
+    guidanceDepth: Optional[int] = Field(default=None, ge=1, le=4)
+    rolloutCutoffDepth: Optional[int] = Field(default=None, ge=1, le=300)
+    leafEvaluation: Optional[Literal["random_terminal", "heuristic_eval", "minimax_eval"]] = None
     persist: bool = True
     commitImmediately: bool = True
 
 
 class PerformAIMoveRequest(BaseModel):
     color: Literal["white", "black"]
+
+
+class EvaluationStartRequest(BaseModel):
+    games: int = Field(..., ge=1, le=500)
+    variant: Literal["british", "international"]
+    startPolicy: Literal["alternate", "white", "black"] = "alternate"
+    randomSeed: Optional[int] = None
+    randomizeOpening: bool = False
+    randomizePlies: int = Field(default=0, ge=0, le=12)
+    resetConfigsAfterRun: bool = False
+    white: PlayerConfigPayload
+    black: PlayerConfigPayload
+
+
+class EvaluationStopRequest(BaseModel):
+    evaluationId: str

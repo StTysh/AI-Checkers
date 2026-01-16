@@ -77,6 +77,12 @@ def create_mcts_controller(
     rollout_depth: int = 80,
     exploration_constant: float = 1.4,
     random_seed: int | None = None,
+    use_parallel: bool = False,
+    workers: int = 1,
+    rollout_policy: str = "random",
+    guidance_depth: int = 1,
+    rollout_cutoff_depth: int | None = None,
+    leaf_evaluation: str = "random_terminal",
 ) -> PlayerController:
     iterations = max(1, iterations)
     rollout_depth = max(1, rollout_depth)
@@ -89,9 +95,23 @@ def create_mcts_controller(
             rollout_depth=rollout_depth,
             exploration_constant=exploration_constant,
             random_seed=random_seed,
+            use_parallel=use_parallel,
+            workers=workers,
+            rollout_policy=rollout_policy,
+            guidance_depth=guidance_depth,
+            rollout_cutoff_depth=rollout_cutoff_depth,
+            leaf_evaluation=leaf_evaluation,
         )
 
     suffix = f" (iter={iterations}, depth={rollout_depth}, C={exploration_constant:.2f})"
+    if use_parallel:
+        suffix += f", p={workers}"
+    if rollout_policy != "random":
+        suffix += f", policy={rollout_policy}"
+    if rollout_cutoff_depth:
+        suffix += f", cutoff={rollout_cutoff_depth}"
+    if leaf_evaluation != "random_terminal":
+        suffix += f", leaf={leaf_evaluation}"
     if random_seed is not None:
         suffix += f", seed={random_seed}"
 

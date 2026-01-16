@@ -126,6 +126,12 @@ export const useGameAPI = store => {
           if (config.randomSeed !== null && config.randomSeed !== undefined) {
             payload.randomSeed = config.randomSeed;
           }
+          payload.mctsParallel = config.mctsParallel;
+          payload.mctsWorkers = config.mctsWorkers;
+          payload.rolloutPolicy = config.rolloutPolicy;
+          payload.guidanceDepth = config.guidanceDepth;
+          payload.rolloutCutoffDepth = config.rolloutCutoffDepth;
+          payload.leafEvaluation = config.leafEvaluation;
         }
         await requestAIMove(payload);
         if (manualAiApproval) break;
@@ -254,6 +260,62 @@ export const useGameAPI = store => {
     [performPendingRequest, runAITurns],
   );
 
+  const startEvaluation = useCallback(async payload => {
+    const { setError } = store.getState();
+    try {
+      return await handleResponse(
+        await fetch(`${API_BASE}/evaluate/start`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      );
+    } catch (error) {
+      setError(error.message);
+      throw error;
+    }
+  }, [store]);
+
+  const getEvaluationStatus = useCallback(async evaluationId => {
+    const { setError } = store.getState();
+    try {
+      return await handleResponse(
+        await fetch(`${API_BASE}/evaluate/status?evaluation_id=${evaluationId}`),
+      );
+    } catch (error) {
+      setError(error.message);
+      throw error;
+    }
+  }, [store]);
+
+  const stopEvaluation = useCallback(async evaluationId => {
+    const { setError } = store.getState();
+    try {
+      return await handleResponse(
+        await fetch(`${API_BASE}/evaluate/stop`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ evaluationId }),
+        }),
+      );
+    } catch (error) {
+      setError(error.message);
+      throw error;
+    }
+  }, [store]);
+
+  const getEvaluationResults = useCallback(async (evaluationId, format = "csv") => {
+    const response = await fetch(`${API_BASE}/evaluate/results?evaluation_id=${evaluationId}&format=${format}`);
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || "Backend error");
+    }
+    if (format === "json") {
+      return response.json();
+    }
+    return response.text();
+  }, []);
+
   useEffect(() => {
     loadBoard();
   }, [loadBoard]);
@@ -271,6 +333,10 @@ export const useGameAPI = store => {
       changeVariant,
       resetGame,
       configurePlayers,
+      startEvaluation,
+      getEvaluationStatus,
+      stopEvaluation,
+      getEvaluationResults,
     }),
     [
       loadBoard,
@@ -284,6 +350,10 @@ export const useGameAPI = store => {
       configurePlayers,
       undoMove,
       performPendingAIMove,
+      startEvaluation,
+      getEvaluationStatus,
+      stopEvaluation,
+      getEvaluationResults,
     ],
   );
 };
