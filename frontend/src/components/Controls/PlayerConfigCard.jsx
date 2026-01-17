@@ -321,7 +321,6 @@ const PlayerConfigCard = ({ color }) => {
                       max={200}
                       step={5}
                       valueLabelDisplay="auto"
-                      marks
                       disabled={configLocked || !config.aspiration}
                     />
                     <FormGroup>
@@ -453,7 +452,6 @@ const PlayerConfigCard = ({ color }) => {
                       max={200}
                       step={5}
                       valueLabelDisplay="auto"
-                      marks
                       disabled={configLocked || !config.endgameTablebase}
                     />
                   </AccordionDetails>
@@ -505,7 +503,6 @@ const PlayerConfigCard = ({ color }) => {
                   max={1000}
                   step={50}
                   valueLabelDisplay="auto"
-                  marks
                   disabled={configLocked}
                 />
                 <Typography variant="body2">Rollout depth</Typography>

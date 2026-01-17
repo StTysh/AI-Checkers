@@ -131,7 +131,7 @@ const GameSetupCard = () => {
             </Grid>
           </Grid>
 
-          <Stack direction="row" spacing={2} alignItems="center" flexWrap="nowrap">
+          <Stack direction="row" spacing={2} alignItems="center" justifyContent="center" flexWrap="nowrap">
             <FormControlLabel
               control={<Switch checked={showHints} onChange={event => setShowHints(event.target.checked)} />}
               label="Move hints"
