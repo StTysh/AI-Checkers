@@ -19,22 +19,6 @@ class Board:
         self.turn = Color.WHITE
         self._set_start_pieces()
     
-    def printBoard(self):
-        for row in range(self.boardSize):
-            line = ""
-            for col in range(self.boardSize):
-                p = self.board[row][col]
-                if not p:
-                    line += ". "
-                else:
-                    if p.color == Color.WHITE:
-                        line += "w" if not p.is_king else "W"
-                    else:
-                        line += "b" if not p.is_king else "B"
-                    line += " "
-            print(line)
-        print()
-
     def getPiece(self, row: int, col: int) -> Optional[Piece]:
         if self._is_within_bounds(row, col):
             return self.board[row][col]

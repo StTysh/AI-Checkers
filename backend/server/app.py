@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+import os
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -41,6 +42,12 @@ def create_app() -> FastAPI:
     @app.get("/board")
     def read_board(session: GameSession = Depends(get_session)):
         return session.serialize()
+
+    @app.get("/system-info")
+    def system_info():
+        cpu_total = os.cpu_count() or 1
+        recommended_max = max(1, cpu_total - 2)
+        return {"cpuCount": cpu_total, "recommendedMaxWorkers": recommended_max}
 
     @app.get("/valid-moves")
     def read_valid_moves(

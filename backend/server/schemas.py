@@ -17,10 +17,7 @@ class MoveRequest(BaseModel):
     )
 
 
-class PlayerConfigPayload(BaseModel):
-    type: Optional[
-        Literal["human", "minimax", "mcts", "genetic", "reinforcement", "remote"]
-    ] = None
+class AIConfigFields(BaseModel):
     depth: Optional[int] = Field(default=None, ge=1, le=16)
     alphaBeta: Optional[bool] = None
     transposition: Optional[bool] = None
@@ -29,6 +26,20 @@ class PlayerConfigPayload(BaseModel):
     iterativeDeepening: Optional[bool] = None
     quiescence: Optional[bool] = None
     maxQuiescenceDepth: Optional[int] = Field(default=None, ge=1, le=16)
+    aspiration: Optional[bool] = None
+    aspirationWindow: Optional[float] = Field(default=None, ge=10.0, le=200.0)
+    historyHeuristic: Optional[bool] = None
+    butterflyHeuristic: Optional[bool] = None
+    nullMove: Optional[bool] = None
+    nullMoveReduction: Optional[int] = Field(default=None, ge=1, le=4)
+    lmr: Optional[bool] = None
+    lmrMinDepth: Optional[int] = Field(default=None, ge=1, le=10)
+    lmrMinMoves: Optional[int] = Field(default=None, ge=1, le=12)
+    lmrReduction: Optional[int] = Field(default=None, ge=1, le=3)
+    deterministicOrdering: Optional[bool] = None
+    endgameTablebase: Optional[bool] = None
+    endgameMaxPieces: Optional[int] = Field(default=None, ge=2, le=12)
+    endgameMaxPlies: Optional[int] = Field(default=None, ge=4, le=200)
     timeLimitMs: Optional[int] = Field(default=None, ge=10, le=60000)
     parallel: Optional[bool] = None
     workers: Optional[int] = Field(default=None, ge=1, le=64)
@@ -42,6 +53,17 @@ class PlayerConfigPayload(BaseModel):
     guidanceDepth: Optional[int] = Field(default=None, ge=1, le=4)
     rolloutCutoffDepth: Optional[int] = Field(default=None, ge=1, le=300)
     leafEvaluation: Optional[Literal["random_terminal", "heuristic_eval", "minimax_eval"]] = None
+    mctsTransposition: Optional[bool] = None
+    mctsTranspositionMaxEntries: Optional[int] = Field(default=None, ge=1000, le=1_000_000)
+    progressiveWidening: Optional[bool] = None
+    pwK: Optional[float] = Field(default=None, ge=0.1, le=10.0)
+    pwAlpha: Optional[float] = Field(default=None, ge=0.1, le=1.0)
+
+
+class PlayerConfigPayload(AIConfigFields):
+    type: Optional[
+        Literal["human", "minimax", "mcts", "genetic", "reinforcement", "remote"]
+    ] = None
 
 
 class ConfigRequest(BaseModel):
@@ -57,30 +79,9 @@ class ResetRequest(BaseModel):
     variant: Optional[Literal["british", "international"]] = None
 
 
-class AIMoveRequest(BaseModel):
+class AIMoveRequest(AIConfigFields):
     color: Optional[Literal["white", "black"]] = None
     algorithm: Literal["minimax", "mcts"] = "minimax"
-    depth: Optional[int] = Field(default=None, ge=1, le=16)
-    alphaBeta: Optional[bool] = None
-    transposition: Optional[bool] = None
-    moveOrdering: Optional[bool] = None
-    killerMoves: Optional[bool] = None
-    iterativeDeepening: Optional[bool] = None
-    quiescence: Optional[bool] = None
-    maxQuiescenceDepth: Optional[int] = Field(default=None, ge=1, le=16)
-    timeLimitMs: Optional[int] = Field(default=None, ge=10, le=60000)
-    parallel: Optional[bool] = None
-    workers: Optional[int] = Field(default=None, ge=1, le=64)
-    iterations: Optional[int] = Field(default=None, ge=1, le=20000)
-    rolloutDepth: Optional[int] = Field(default=None, ge=1, le=300)
-    explorationConstant: Optional[float] = Field(default=None, ge=0.01, le=10.0)
-    randomSeed: Optional[int] = None
-    mctsParallel: Optional[bool] = None
-    mctsWorkers: Optional[int] = Field(default=None, ge=1, le=64)
-    rolloutPolicy: Optional[Literal["random", "heuristic", "minimax_guided"]] = None
-    guidanceDepth: Optional[int] = Field(default=None, ge=1, le=4)
-    rolloutCutoffDepth: Optional[int] = Field(default=None, ge=1, le=300)
-    leafEvaluation: Optional[Literal["random_terminal", "heuristic_eval", "minimax_eval"]] = None
     persist: bool = True
     commitImmediately: bool = True
 

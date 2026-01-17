@@ -44,6 +44,20 @@ def _default_player_settings() -> dict[str, Any]:
         "iterativeDeepening": False,
         "quiescence": True,
         "maxQuiescenceDepth": 6,
+        "aspiration": False,
+        "aspirationWindow": 50.0,
+        "historyHeuristic": False,
+        "butterflyHeuristic": False,
+        "nullMove": False,
+        "nullMoveReduction": 2,
+        "lmr": False,
+        "lmrMinDepth": 3,
+        "lmrMinMoves": 4,
+        "lmrReduction": 1,
+        "deterministicOrdering": True,
+        "endgameTablebase": False,
+        "endgameMaxPieces": 6,
+        "endgameMaxPlies": 40,
         "timeLimitMs": 1000,
         "parallel": False,
         "workers": 4,
@@ -57,6 +71,11 @@ def _default_player_settings() -> dict[str, Any]:
         "guidanceDepth": 2,
         "rolloutCutoffDepth": 40,
         "leafEvaluation": "random_terminal",
+        "mctsTransposition": False,
+        "mctsTranspositionMaxEntries": 200_000,
+        "progressiveWidening": False,
+        "pwK": 1.5,
+        "pwAlpha": 0.5,
     }
 
 
@@ -205,6 +224,34 @@ class GameSession:
                 overrides["quiescence"] = payload.quiescence
             if payload.maxQuiescenceDepth is not None:
                 overrides["maxQuiescenceDepth"] = payload.maxQuiescenceDepth
+            if payload.aspiration is not None:
+                overrides["aspiration"] = payload.aspiration
+            if payload.aspirationWindow is not None:
+                overrides["aspirationWindow"] = payload.aspirationWindow
+            if payload.historyHeuristic is not None:
+                overrides["historyHeuristic"] = payload.historyHeuristic
+            if payload.butterflyHeuristic is not None:
+                overrides["butterflyHeuristic"] = payload.butterflyHeuristic
+            if payload.nullMove is not None:
+                overrides["nullMove"] = payload.nullMove
+            if payload.nullMoveReduction is not None:
+                overrides["nullMoveReduction"] = payload.nullMoveReduction
+            if payload.lmr is not None:
+                overrides["lmr"] = payload.lmr
+            if payload.lmrMinDepth is not None:
+                overrides["lmrMinDepth"] = payload.lmrMinDepth
+            if payload.lmrMinMoves is not None:
+                overrides["lmrMinMoves"] = payload.lmrMinMoves
+            if payload.lmrReduction is not None:
+                overrides["lmrReduction"] = payload.lmrReduction
+            if payload.deterministicOrdering is not None:
+                overrides["deterministicOrdering"] = payload.deterministicOrdering
+            if payload.endgameTablebase is not None:
+                overrides["endgameTablebase"] = payload.endgameTablebase
+            if payload.endgameMaxPieces is not None:
+                overrides["endgameMaxPieces"] = payload.endgameMaxPieces
+            if payload.endgameMaxPlies is not None:
+                overrides["endgameMaxPlies"] = payload.endgameMaxPlies
             if payload.timeLimitMs is not None:
                 overrides["timeLimitMs"] = payload.timeLimitMs
             if payload.parallel is not None:
@@ -231,6 +278,16 @@ class GameSession:
                 overrides["rolloutCutoffDepth"] = payload.rolloutCutoffDepth
             if payload.leafEvaluation is not None:
                 overrides["leafEvaluation"] = payload.leafEvaluation
+            if payload.mctsTransposition is not None:
+                overrides["mctsTransposition"] = payload.mctsTransposition
+            if payload.mctsTranspositionMaxEntries is not None:
+                overrides["mctsTranspositionMaxEntries"] = payload.mctsTranspositionMaxEntries
+            if payload.progressiveWidening is not None:
+                overrides["progressiveWidening"] = payload.progressiveWidening
+            if payload.pwK is not None:
+                overrides["pwK"] = payload.pwK
+            if payload.pwAlpha is not None:
+                overrides["pwAlpha"] = payload.pwAlpha
             controller = self._controller_from_settings(color, overrides)
             self.game.setPlayer(color, controller)
             if payload.persist:
@@ -435,6 +492,20 @@ class GameSession:
                 use_killer_moves=bool(settings.get("killerMoves", True)),
                 use_quiescence=bool(settings.get("quiescence", True)),
                 max_quiescence_depth=int(settings.get("maxQuiescenceDepth") or 6),
+                use_aspiration=bool(settings.get("aspiration")),
+                aspiration_window=float(settings.get("aspirationWindow") or 50.0),
+                use_history_heuristic=bool(settings.get("historyHeuristic")),
+                use_butterfly_heuristic=bool(settings.get("butterflyHeuristic")),
+                use_null_move=bool(settings.get("nullMove")),
+                null_move_reduction=int(settings.get("nullMoveReduction") or 2),
+                use_lmr=bool(settings.get("lmr")),
+                lmr_min_depth=int(settings.get("lmrMinDepth") or 3),
+                lmr_min_moves=int(settings.get("lmrMinMoves") or 4),
+                lmr_reduction=int(settings.get("lmrReduction") or 1),
+                deterministic_ordering=bool(settings.get("deterministicOrdering", True)),
+                use_endgame_tablebase=bool(settings.get("endgameTablebase")),
+                endgame_max_pieces=int(settings.get("endgameMaxPieces") or 6),
+                endgame_max_plies=int(settings.get("endgameMaxPlies") or 40),
                 use_iterative_deepening=bool(settings.get("iterativeDeepening")),
                 time_limit_ms=int(settings.get("timeLimitMs") or 1000),
                 use_parallel=use_parallel,
@@ -463,6 +534,11 @@ class GameSession:
                 guidance_depth=guidance_depth,
                 rollout_cutoff_depth=rollout_cutoff_depth,
                 leaf_evaluation=leaf_evaluation,
+                use_transposition=bool(settings.get("mctsTransposition")),
+                transposition_max_entries=int(settings.get("mctsTranspositionMaxEntries") or 200_000),
+                progressive_widening=bool(settings.get("progressiveWidening")),
+                pw_k=float(settings.get("pwK") or 1.5),
+                pw_alpha=float(settings.get("pwAlpha") or 0.5),
             )
         raise ValueError(f"Player type '{player_type}' not implemented yet.")
 

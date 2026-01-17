@@ -47,6 +47,8 @@ const EvaluationPanel = () => {
     black: playerConfig.black,
   }));
 
+  const numberSetter = setter => event => setter(Number(event.target.value));
+
   const describeConfig = config => {
     if (config.type === "minimax") {
       return `Minimax d=${config.depth}, id=${config.iterativeDeepening ? "on" : "off"}, t=${config.timeLimitMs}ms, p=${config.parallel ? config.workers : 1}`;
@@ -140,7 +142,7 @@ const EvaluationPanel = () => {
               type="number"
               size="small"
               value={games}
-              onChange={event => setGames(Number(event.target.value))}
+              onChange={numberSetter(setGames)}
               inputProps={{ min: 1, max: 500, step: 1 }}
             />
             <FormControl fullWidth size="small">
@@ -167,7 +169,7 @@ const EvaluationPanel = () => {
               type="number"
               size="small"
               value={randomizePlies}
-              onChange={event => setRandomizePlies(Number(event.target.value))}
+              onChange={numberSetter(setRandomizePlies)}
               inputProps={{ min: 0, max: 12, step: 1 }}
               disabled={!randomizeOpening}
             />

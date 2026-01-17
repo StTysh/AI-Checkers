@@ -36,6 +36,7 @@ const useGameStore = create(
     playerConfig: cloneDefaultPlayerConfig(),
     lastMove: null,
     gameReady: false,
+    systemInfo: null,
     manualAiApproval: false,
     setBoardState: payload =>
       set(state => {
@@ -83,6 +84,7 @@ const useGameStore = create(
     setShowCoordinates: flag => set({ showCoordinates: flag }),
     setManualAiApproval: flag => set({ manualAiApproval: flag }),
     setGameReady: flag => set({ gameReady: flag }),
+    setSystemInfo: info => set({ systemInfo: info }),
     setLastMove: move => set({ lastMove: move }),
     resetGameState: () =>
       set(state => {

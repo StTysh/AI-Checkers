@@ -23,8 +23,10 @@ class MCTSNode:
     visits: int = 0
     value: float = 0.0
     untried_moves: list[Move] = field(default_factory=list)
+    board_hash: int = 0
 
     def __post_init__(self) -> None:
+        self.board_hash = self.board.compute_hash()
         if not self.untried_moves:
             moves_map = self.board.getAllValidMoves(self.board.turn)
             self.untried_moves = _collect_moves(moves_map)
@@ -32,14 +34,20 @@ class MCTSNode:
     def is_fully_expanded(self) -> bool:
         return not self.untried_moves
 
-    def best_child(self, exploration_constant: float) -> "MCTSNode":
-        parent_visits = max(1, self.visits)
+    def best_child(
+        self,
+        exploration_constant: float,
+        stats: Optional[dict[int, tuple[int, float]]] = None,
+    ) -> "MCTSNode":
+        parent_visits, _ = _node_stats(self, stats)
+        parent_visits = max(1, parent_visits)
 
         def ucb(child: "MCTSNode") -> float:
-            if child.visits == 0:
+            visits, value = _node_stats(child, stats)
+            if visits == 0:
                 return math.inf
-            exploit = child.value / child.visits
-            explore = exploration_constant * math.sqrt(math.log(parent_visits) / child.visits)
+            exploit = value / visits
+            explore = exploration_constant * math.sqrt(math.log(parent_visits) / visits)
             return exploit + explore
 
         return max(self.children, key=ucb)
@@ -58,6 +66,11 @@ def select_move(
     guidance_depth: int = 1,
     rollout_cutoff_depth: Optional[int] = None,
     leaf_evaluation: str = "random_terminal",
+    use_transposition: bool = False,
+    transposition_max_entries: int = 200_000,
+    progressive_widening: bool = False,
+    pw_k: float = 1.5,
+    pw_alpha: float = 0.5,
 ) -> Optional[Tuple[Piece, Move]]:
     """Return the best move found by Monte Carlo Tree Search.
 
@@ -87,6 +100,11 @@ def select_move(
             guidance_depth,
             rollout_cutoff_depth,
             leaf_evaluation,
+            use_transposition,
+            transposition_max_entries,
+            progressive_widening,
+            pw_k,
+            pw_alpha,
         )
         if not stats:
             return None
@@ -103,6 +121,11 @@ def select_move(
             guidance_depth,
             rollout_cutoff_depth,
             leaf_evaluation,
+            use_transposition,
+            transposition_max_entries,
+            progressive_widening,
+            pw_k,
+            pw_alpha,
         )
 
     if best_move is None:
@@ -125,25 +148,33 @@ def _search_single(
     guidance_depth: int,
     rollout_cutoff_depth: Optional[int],
     leaf_evaluation: str,
+    use_transposition: bool,
+    transposition_max_entries: int,
+    progressive_widening: bool,
+    pw_k: float,
+    pw_alpha: float,
 ) -> Optional[Move]:
     rng = random.Random(random_seed)
     root = MCTSNode(board=root_board)
+    stats: Optional[dict[int, tuple[int, float]]] = {} if use_transposition else None
 
     for _ in range(iterations):
         node = root
 
-        # Selection
-        while node.children and node.is_fully_expanded():
-            node = node.best_child(exploration_constant)
-
-        # Expansion
-        if node.untried_moves:
-            move = rng.choice(node.untried_moves)
-            node.untried_moves.remove(move)
-            child_board = node.board.simulateMove(move)
-            child = MCTSNode(board=child_board, parent=node, move=move)
-            node.children.append(child)
-            node = child
+        # Selection / Expansion (with optional progressive widening)
+        while True:
+            if node.untried_moves and _can_expand(node, progressive_widening, pw_k, pw_alpha):
+                move = rng.choice(node.untried_moves)
+                node.untried_moves.remove(move)
+                child_board = node.board.simulateMove(move)
+                child = MCTSNode(board=child_board, parent=node, move=move)
+                node.children.append(child)
+                node = child
+                break
+            if node.children:
+                node = node.best_child(exploration_constant, stats)
+                continue
+            break
 
         # Simulation
         reward = _rollout(
@@ -161,12 +192,30 @@ def _search_single(
         while node is not None:
             node.visits += 1
             node.value += reward
+            if stats is not None:
+                visits, value = stats.get(node.board_hash, (0, 0.0))
+                stats[node.board_hash] = (visits + 1, value + reward)
+                if len(stats) > transposition_max_entries:
+                    stats.pop(next(iter(stats)))
             node = node.parent
 
     if not root.children:
         return None
     best_child = max(root.children, key=lambda child: child.visits)
     return best_child.move
+
+
+def _node_stats(node: MCTSNode, stats: Optional[dict[int, tuple[int, float]]]) -> tuple[int, float]:
+    if stats is None:
+        return node.visits, node.value
+    return stats.get(node.board_hash, (0, 0.0))
+
+
+def _can_expand(node: MCTSNode, progressive_widening: bool, pw_k: float, pw_alpha: float) -> bool:
+    if not progressive_widening:
+        return True
+    allowed = max(1, int(pw_k * (max(1, node.visits) ** pw_alpha)))
+    return len(node.children) < allowed
 
 
 def _parallel_search(
@@ -181,6 +230,11 @@ def _parallel_search(
     guidance_depth: int,
     rollout_cutoff_depth: Optional[int],
     leaf_evaluation: str,
+    use_transposition: bool,
+    transposition_max_entries: int,
+    progressive_widening: bool,
+    pw_k: float,
+    pw_alpha: float,
 ) -> dict[Move, int]:
     workers = max(1, workers)
     per_worker = max(1, iterations // workers)
@@ -197,6 +251,11 @@ def _parallel_search(
             guidance_depth,
             rollout_cutoff_depth,
             leaf_evaluation,
+            use_transposition,
+            transposition_max_entries,
+            progressive_widening,
+            pw_k,
+            pw_alpha,
         )
         return {move: 1} if move else {}
 

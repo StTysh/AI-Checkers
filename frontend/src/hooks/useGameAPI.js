@@ -3,6 +3,62 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 const API_BASE = "/api";
 const SUPPORTED_AI_TYPES = new Set(["minimax", "mcts"]);
 
+const MINIMAX_PAYLOAD_KEYS = [
+  "depth",
+  "alphaBeta",
+  "transposition",
+  "moveOrdering",
+  "killerMoves",
+  "iterativeDeepening",
+  "quiescence",
+  "maxQuiescenceDepth",
+  "aspiration",
+  "aspirationWindow",
+  "historyHeuristic",
+  "butterflyHeuristic",
+  "nullMove",
+  "nullMoveReduction",
+  "lmr",
+  "lmrMinDepth",
+  "lmrMinMoves",
+  "lmrReduction",
+  "deterministicOrdering",
+  "endgameTablebase",
+  "endgameMaxPieces",
+  "endgameMaxPlies",
+  "timeLimitMs",
+  "parallel",
+  "workers",
+];
+
+const MCTS_PAYLOAD_KEYS = [
+  "iterations",
+  "rolloutDepth",
+  "explorationConstant",
+  "randomSeed",
+  "mctsParallel",
+  "mctsWorkers",
+  "rolloutPolicy",
+  "guidanceDepth",
+  "rolloutCutoffDepth",
+  "leafEvaluation",
+  "mctsTransposition",
+  "mctsTranspositionMaxEntries",
+  "progressiveWidening",
+  "pwK",
+  "pwAlpha",
+];
+
+const assignPayloadKeys = (target, source, keys) => {
+  keys.forEach(key => {
+    if (key === "randomSeed") {
+      target.randomSeed = source.randomSeed ?? undefined;
+      return;
+    }
+    target[key] = source[key];
+  });
+};
+
 const handleResponse = async response => {
   if (!response.ok) {
     const text = await response.text();
@@ -100,39 +156,7 @@ export const useGameAPI = store => {
           await performPendingRequest(turn);
           continue;
         }
-        const payload = {
-          color: turn,
-          algorithm: config.type,
-          persist: true,
-          commitImmediately: !manualAiApproval,
-        };
-        if (config.type === "minimax") {
-          payload.depth = config.depth;
-          payload.alphaBeta = config.alphaBeta;
-          payload.transposition = config.transposition;
-          payload.moveOrdering = config.moveOrdering;
-          payload.killerMoves = config.killerMoves;
-          payload.iterativeDeepening = config.iterativeDeepening;
-          payload.quiescence = config.quiescence;
-          payload.maxQuiescenceDepth = config.maxQuiescenceDepth;
-          payload.timeLimitMs = config.timeLimitMs;
-          payload.parallel = config.parallel;
-          payload.workers = config.workers;
-        }
-        if (config.type === "mcts") {
-          payload.iterations = config.iterations;
-          payload.rolloutDepth = config.rolloutDepth;
-          payload.explorationConstant = config.explorationConstant;
-          if (config.randomSeed !== null && config.randomSeed !== undefined) {
-            payload.randomSeed = config.randomSeed;
-          }
-          payload.mctsParallel = config.mctsParallel;
-          payload.mctsWorkers = config.mctsWorkers;
-          payload.rolloutPolicy = config.rolloutPolicy;
-          payload.guidanceDepth = config.guidanceDepth;
-          payload.rolloutCutoffDepth = config.rolloutCutoffDepth;
-          payload.leafEvaluation = config.leafEvaluation;
-        }
+        const payload = buildAiPayload(turn, config, manualAiApproval);
         await requestAIMove(payload);
         if (manualAiApproval) break;
         if (store.getState().gameMode !== "aivai") break;
@@ -142,6 +166,22 @@ export const useGameAPI = store => {
       notifyAiIdle();
     }
   }, [notifyAiIdle, performPendingRequest, requestAIMove, store]);
+
+  const buildAiPayload = (turn, config, manualAiApproval) => {
+    const payload = {
+      color: turn,
+      algorithm: config.type,
+      persist: true,
+      commitImmediately: !manualAiApproval,
+    };
+    if (config.type === "minimax") {
+      assignPayloadKeys(payload, config, MINIMAX_PAYLOAD_KEYS);
+    }
+    if (config.type === "mcts") {
+      assignPayloadKeys(payload, config, MCTS_PAYLOAD_KEYS);
+    }
+    return payload;
+  };
 
   const sendMove = useCallback(
     async payload => {
@@ -252,6 +292,16 @@ export const useGameAPI = store => {
     }
   }, [store]);
 
+  const fetchSystemInfo = useCallback(async () => {
+    const { setError } = store.getState();
+    try {
+      return await handleResponse(await fetch(`${API_BASE}/system-info`));
+    } catch (error) {
+      setError(error.message);
+      throw error;
+    }
+  }, [store]);
+
   const performPendingAIMove = useCallback(
     async color => {
       await performPendingRequest(color);
@@ -333,6 +383,7 @@ export const useGameAPI = store => {
       changeVariant,
       resetGame,
       configurePlayers,
+      fetchSystemInfo,
       startEvaluation,
       getEvaluationStatus,
       stopEvaluation,
@@ -350,6 +401,7 @@ export const useGameAPI = store => {
       configurePlayers,
       undoMove,
       performPendingAIMove,
+      fetchSystemInfo,
       startEvaluation,
       getEvaluationStatus,
       stopEvaluation,
