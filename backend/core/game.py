@@ -58,16 +58,6 @@ class Game:
 
     def isAITurn(self) -> bool:
         return not self.currentController().is_human
-
-    def requestAIMove(self) -> bool:
-        controller = self.currentController()
-        if controller.is_human:
-            return False
-        decision = controller.select_move(self)
-        if decision is None:
-            return False
-        piece, move = decision
-        return self.makeMove(piece, move)
     
     def makeMove(self, piece: Piece, move: Move) -> bool:
         if not piece or move is None:
@@ -97,20 +87,6 @@ class Game:
         self.switchTurn()
         return True
 
-    def simulateMove(self, piece: Piece, move: Move) -> Board:
-        if piece not in self.board.getAllPieces():
-            raise ValueError("Piece must belong to the current board to simulate a move.")
-        if move not in self.getValidMoves().get(piece, []):
-            raise ValueError("Move must be valid for the specified piece to simulate it.")
-        return self.board.simulateMove(move)
-        
-    def isGameOver(self):
-        res = self.board.is_game_over()
-        self.winner = res
-        return res
-    
-    def getWinner(self):
-        return self.winner
     
     def undoMove(self):
         if not self.move_history:
@@ -128,47 +104,3 @@ class Game:
         self.switchTurn()
         self.winner = None
         
-    def displayBoard(self):
-        self.board.printBoard()
-    
-    def runTurn(self):
-        if self.isGameOver():
-            print(f"Game over! Winner: {self.getWinner().value if self.winner else 'Draw'}")
-            return
-
-        controller = self.currentController()
-        print(f"{controller.name} ({self.current_player.value}) to move.")
-        self.displayBoard()
-
-        moves = self.getValidMoves()
-        if not moves:
-            print(f"No moves for {self.current_player.value}.")
-            self.winner = Color.BLACK if self.current_player == Color.WHITE else Color.WHITE
-            return
-
-        if controller.is_human:
-            print(f"Available moves for {self.current_player.value}:")
-            for i, (piece, options) in enumerate(moves.items(), 1):
-                print(f"{i}. {piece}")
-                for j, move in enumerate(options, 1):
-                    print(f"   {j}: {move}")
-
-            try:
-                idx = int(input("Select piece number: ")) - 1
-                selected_piece = list(moves.keys())[idx]
-                move_idx = int(input(f"Select move number (1-{len(moves[selected_piece])}): ")) - 1
-                selected_move = moves[selected_piece][move_idx]
-            except (ValueError, IndexError):
-                print("Invalid input.")
-                return
-        else:
-            decision = controller.select_move(self)
-            if decision is None:
-                print(f"{controller.name} cannot find a move.")
-                self.winner = Color.BLACK if self.current_player == Color.WHITE else Color.WHITE
-                return
-            selected_piece, selected_move = decision
-
-        success = self.makeMove(selected_piece, selected_move)
-        if success and self.winner:
-            print(f"Game Over! Winner: {self.winner.value}")

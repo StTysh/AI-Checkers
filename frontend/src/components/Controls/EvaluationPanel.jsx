@@ -85,7 +85,18 @@ const EvaluationPanel = () => {
     if (!running || !evaluationId) return;
     pollRef.current = window.setInterval(async () => {
       const data = await api.getEvaluationStatus(evaluationId);
-      setStatus(data);
+      setStatus(prev => {
+        if (!prev) return data;
+        const changed =
+          prev.running !== data.running ||
+          prev.completedGames !== data.completedGames ||
+          prev.totalGames !== data.totalGames ||
+          prev.score?.whiteWins !== data.score?.whiteWins ||
+          prev.score?.blackWins !== data.score?.blackWins ||
+          prev.score?.draws !== data.score?.draws ||
+          (prev.results?.length ?? 0) !== (data.results?.length ?? 0);
+        return changed ? data : prev;
+      });
       if (!data.running) {
         setRunning(false);
       }

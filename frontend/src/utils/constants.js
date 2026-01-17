@@ -17,14 +17,6 @@ export const VARIANTS = [
   { value: "international", label: "International (10×10)" },
 ];
 
-export const SIM_SPEEDS = [
-  { label: "0.25×", value: 0.25 },
-  { label: "0.5×", value: 0.5 },
-  { label: "1×", value: 1 },
-  { label: "2×", value: 2 },
-  { label: "5×", value: 5 },
-];
-
 export const DEFAULT_PLAYER_CONFIG = {
   white: {
     type: "human",

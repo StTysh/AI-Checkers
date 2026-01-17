@@ -6,7 +6,6 @@ import PlayerConfigCard from "../components/Controls/PlayerConfigCard";
 import GameSetupCard from "../components/Controls/GameSetupCard";
 import EvaluationPanel from "../components/Controls/EvaluationPanel";
 import GameOverDialog from "../components/Dialogs/GameOverDialog";
-import ThemeSwitcher from "../components/UI/ThemeSwitcher";
 import { useEffect, useState } from "react";
 import { useGameContext } from "../context/GameProvider";
 
@@ -50,7 +49,6 @@ const GamePage = () => {
                     <PlayerConfigCard color="black" />
                   </Grid>
                 </Grid>
-                <ThemeSwitcher />
               </Box>
             </TabPanel>
             <TabPanel value={tab} index={1}>

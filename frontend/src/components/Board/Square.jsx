@@ -1,12 +1,11 @@
 import { Box } from "@mui/material";
 import clsx from "clsx";
-import { useBoardLogic } from "../../hooks/useBoardLogic";
+import { memo } from "react";
 
-const Square = ({ row, col }) => {
-  const { selectedCell, selectCell, highlightMoves } = useBoardLogic();
+const Square = ({ row, col, selectedCell, highlightLookup, selectCell }) => {
   const isLight = (row + col) % 2 === 0;
   const isSelected = selectedCell && selectedCell.row === row && selectedCell.col === col;
-  const isHighlight = highlightMoves.some(move => move.row === row && move.col === col);
+  const isHighlight = highlightLookup.has(`${row},${col}`);
 
   return (
     <Box
@@ -30,4 +29,4 @@ const Square = ({ row, col }) => {
   );
 };
 
-export default Square;
+export default memo(Square);

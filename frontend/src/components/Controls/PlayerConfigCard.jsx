@@ -273,7 +273,7 @@ const PlayerConfigCard = ({ color }) => {
                   onChange={(_, val) => updatePlayer(color, { iterations: val })}
                   onChangeCommitted={(_, val) => syncConfig({ iterations: val })}
                   min={50}
-                  max={5000}
+                  max={1000}
                   step={50}
                   valueLabelDisplay="auto"
                   marks
@@ -284,7 +284,7 @@ const PlayerConfigCard = ({ color }) => {
                   onChange={(_, val) => updatePlayer(color, { rolloutDepth: val })}
                   onChangeCommitted={(_, val) => syncConfig({ rolloutDepth: val })}
                   min={10}
-                  max={200}
+                  max={100}
                   step={5}
                   valueLabelDisplay="auto"
                   marks

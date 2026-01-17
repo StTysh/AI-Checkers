@@ -34,9 +34,6 @@ const useGameStore = create(
     gameMode: getStoredGameMode(),
     variant: VARIANTS[0].value,
     playerConfig: cloneDefaultPlayerConfig(),
-    simulation: { running: false, speed: 1, stats: { moves: 0, avgTimeMs: 0 } },
-    themePreference: "classic",
-    soundsEnabled: true,
     lastMove: null,
     gameReady: false,
     manualAiApproval: false,
@@ -86,23 +83,12 @@ const useGameStore = create(
     setShowCoordinates: flag => set({ showCoordinates: flag }),
     setManualAiApproval: flag => set({ manualAiApproval: flag }),
     setGameReady: flag => set({ gameReady: flag }),
-    toggleSimulation: running =>
-      set(state => {
-        state.simulation.running = typeof running === "boolean" ? running : !state.simulation.running;
-      }),
-    setSimulationSpeed: speed =>
-      set(state => {
-        state.simulation.speed = speed;
-      }),
-    setThemePreference: pref => set({ themePreference: pref }),
-    setSoundsEnabled: flag => set({ soundsEnabled: flag }),
     setLastMove: move => set({ lastMove: move }),
     resetGameState: () =>
       set(state => {
         state.selectedCell = null;
         state.highlightMoves = [];
         state.lastMove = null;
-        state.simulation = { running: false, speed: 1, stats: { moves: 0, avgTimeMs: 0 } };
       }),
   })),
 );

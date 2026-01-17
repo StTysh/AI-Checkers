@@ -5,7 +5,7 @@ import CoordinateLabel from "./CoordinateLabel";
 import Piece from "./Piece";
 
 const Board = () => {
-  const { boardState, pieces, squares, showCoordinates } = useBoardLogic();
+  const { boardState, pieces, squares, selectedCell, selectCell, highlightLookup, showCoordinates } = useBoardLogic();
 
   if (!boardState) {
     return (
@@ -39,7 +39,16 @@ const Board = () => {
             height="100%"
           >
             {squares.flatMap((row, rIdx) =>
-              row.map((_, cIdx) => <Square key={`${rIdx}-${cIdx}`} row={rIdx} col={cIdx} />),
+              row.map((_, cIdx) => (
+                <Square
+                  key={`${rIdx}-${cIdx}`}
+                  row={rIdx}
+                  col={cIdx}
+                  selectedCell={selectedCell}
+                  highlightLookup={highlightLookup}
+                  selectCell={selectCell}
+                />
+              )),
             )}
           </Box>
           <Box sx={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 20 }}>

@@ -1,5 +1,5 @@
 import { Box } from "@mui/material";
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useLayoutEffect, useMemo, useRef } from "react";
 
 const Piece = ({ piece, boardSize, lastMove }) => {
   const cellPercent = useMemo(() => 100 / boardSize, [boardSize]);
@@ -95,4 +95,20 @@ const Piece = ({ piece, boardSize, lastMove }) => {
   );
 };
 
-export default Piece;
+const areEqual = (prev, next) => {
+  if (prev.boardSize !== next.boardSize) return false;
+  if (prev.lastMove !== next.lastMove) return false;
+  const a = prev.piece;
+  const b = next.piece;
+  return (
+    a.id === b.id &&
+    a.row === b.row &&
+    a.col === b.col &&
+    a.previousRow === b.previousRow &&
+    a.previousCol === b.previousCol &&
+    a.isKing === b.isKing &&
+    a.color === b.color
+  );
+};
+
+export default memo(Piece, areEqual);

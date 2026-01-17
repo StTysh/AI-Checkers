@@ -23,16 +23,16 @@ export const useBoardLogic = () => {
   }, [boardState?.pieces]);
 
   const pieces = useMemo(() => {
-    if (!boardState) return [];
+    if (!boardState?.pieces) return [];
     const previousById = new Map(previousPiecesRef.current.map(piece => [piece.id, piece]));
     return boardState.pieces.map(piece => {
       const previous = previousById.get(piece.id);
       return previous ? { ...piece, row: piece.row, col: piece.col, previousRow: previous.row, previousCol: previous.col } : piece;
     });
-  }, [boardState]);
+  }, [boardState?.pieces]);
 
   const squares = useMemo(() => {
-    if (!boardState) return [];
+    if (!boardState?.pieces) return [];
     const grid = Array.from({ length: boardState.boardSize }, () =>
       Array.from({ length: boardState.boardSize }, () => ({ piece: null })),
     );
@@ -40,7 +40,17 @@ export const useBoardLogic = () => {
       grid[piece.row][piece.col] = { piece };
     });
     return grid;
-  }, [boardState]);
+  }, [boardState?.pieces, boardState?.boardSize]);
+
+  const highlightMoves = useMemo(() => (showHints ? highlightStore : []), [highlightStore, showHints]);
+
+  const highlightLookup = useMemo(() => {
+    const map = new Map();
+    highlightMoves.forEach(move => {
+      map.set(`${move.row},${move.col}`, move);
+    });
+    return map;
+  }, [highlightMoves]);
 
   const selectCell = useCallback(
     async cell => {
@@ -52,7 +62,7 @@ export const useBoardLogic = () => {
         return;
       }
 
-      const target = highlightStore.find(move => move.row === cell.row && move.col === cell.col);
+      const target = highlightLookup.get(`${cell.row},${cell.col}`);
       if (selectedCell && target) {
         await api.sendMove({ start: selectedCell, steps: target.move.steps });
         setSelectedCell(null);
@@ -79,7 +89,7 @@ export const useBoardLogic = () => {
         setHighlightMoves([]);
       }
     },
-    [api, boardState, gameReady, highlightStore, selectedCell, setHighlightMoves, setSelectedCell, squares],
+    [api, boardState, gameReady, highlightLookup, selectedCell, setHighlightMoves, setSelectedCell, squares],
   );
 
   return {
@@ -88,7 +98,7 @@ export const useBoardLogic = () => {
     squares,
     selectedCell,
     selectCell,
-    highlightMoves: showHints ? highlightStore : [],
+    highlightLookup,
     showCoordinates,
   };
 };
