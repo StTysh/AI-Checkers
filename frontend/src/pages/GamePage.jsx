@@ -11,7 +11,11 @@ import { useGameContext } from "../context/GameProvider";
 
 const TabPanel = ({ value, index, children }) => {
   if (value !== index) return null;
-  return <Box mt={2}>{children}</Box>;
+  return (
+    <Box mt={2} sx={{ minWidth: 0, overflowX: "hidden" }}>
+      {children}
+    </Box>
+  );
 };
 
 const GamePage = () => {
@@ -39,7 +43,17 @@ const GamePage = () => {
             <Board />
           </Box>
         </Grid>
-        <Grid item xs={12} lg={6} sx={{ flexBasis: { lg: "54%" }, maxWidth: { lg: "54%" } }}>
+        <Grid
+          item
+          xs={12}
+          lg={6}
+          sx={{
+            flexBasis: { lg: "54%" },
+            maxWidth: { lg: "54%" },
+            minWidth: 0,
+            overflowX: "hidden",
+          }}
+        >
           <Box display="flex" flexDirection="column" gap={3}>
             <Tabs value={tab} onChange={(_, value) => setTab(value)}>
               <Tab label="Play" />

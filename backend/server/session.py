@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+import json
 import csv
 import io
 import time
@@ -400,6 +401,22 @@ class GameSession:
         writer.writerow(["meta", "randomSeed", state.config.get("randomSeed")])
         writer.writerow(["meta", "randomizeOpening", state.config.get("randomizeOpening")])
         writer.writerow(["meta", "randomizePlies", state.config.get("randomizePlies")])
+        writer.writerow(["meta", "resetConfigsAfterRun", state.config.get("resetConfigsAfterRun")])
+        writer.writerow(["meta", "experimentName", state.config.get("experimentName")])
+        writer.writerow(["meta", "notes", state.config.get("notes")])
+        writer.writerow(["meta", "drawPolicy", state.config.get("drawPolicy")])
+        writer.writerow(["meta", "whiteConfig", json.dumps(state.config.get("white"), ensure_ascii=False)])
+        writer.writerow(["meta", "blackConfig", json.dumps(state.config.get("black"), ensure_ascii=False)])
+        writer.writerow([])
+        writer.writerow(["summary", "whiteWins", payload["score"].get("whiteWins")])
+        writer.writerow(["summary", "blackWins", payload["score"].get("blackWins")])
+        writer.writerow(["summary", "draws", payload["score"].get("draws")])
+        writer.writerow(["summary", "avgMoves", payload["summary"].get("avgMoves")])
+        writer.writerow(["summary", "avgDuration", payload["summary"].get("avgDuration")])
+        writer.writerow(["summary", "avgMoveTimeWhite", payload["summary"].get("avgMoveTimeWhite")])
+        writer.writerow(["summary", "avgMoveTimeBlack", payload["summary"].get("avgMoveTimeBlack")])
+        writer.writerow(["summary", "winRateWhite", payload["summary"].get("winRateWhite")])
+        writer.writerow(["summary", "winRateBlack", payload["summary"].get("winRateBlack")])
         writer.writerow([])
         writer.writerow([
             "index",
@@ -652,11 +669,26 @@ class GameSession:
         avg_black_time = sum(result.avg_move_time_black for result in state.results) / total
 
         return {
+            "schema_version": "1.0",
             "evaluationId": state.evaluation_id,
             "running": state.running,
             "completedGames": len(state.results),
             "totalGames": state.total_games,
             "config": state.config,
+            "metadata": {
+                "variant": state.config.get("variant"),
+                "games": state.total_games,
+                "startPolicy": state.config.get("startPolicy"),
+                "randomSeed": state.config.get("randomSeed"),
+                "randomizeOpening": state.config.get("randomizeOpening"),
+                "randomizePlies": state.config.get("randomizePlies"),
+                "resetConfigsAfterRun": state.config.get("resetConfigsAfterRun"),
+                "experimentName": state.config.get("experimentName"),
+                "notes": state.config.get("notes"),
+                "drawPolicy": state.config.get("drawPolicy"),
+                "whiteConfig": state.config.get("white"),
+                "blackConfig": state.config.get("black"),
+            },
             "score": {
                 "whiteWins": white_wins,
                 "blackWins": black_wins,

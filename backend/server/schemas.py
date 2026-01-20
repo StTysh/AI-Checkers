@@ -98,6 +98,9 @@ class EvaluationStartRequest(BaseModel):
     randomizeOpening: bool = False
     randomizePlies: int = Field(default=0, ge=0, le=12)
     resetConfigsAfterRun: bool = False
+    experimentName: Optional[str] = None
+    notes: Optional[str] = None
+    drawPolicy: Optional[Literal["zero", "half", "ignore"]] = "half"
     white: PlayerConfigPayload
     black: PlayerConfigPayload
 

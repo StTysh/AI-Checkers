@@ -635,7 +635,20 @@ def _quiescence(
 		for piece, move in ordered:
 			_check_time(deadline)
 			child = board.simulateMove(move)
-			value = max(value, _quiescence(child, maximizing_color, alpha, beta, options, depth + 1, deadline))
+			value = max(
+				value,
+				_quiescence(
+					child,
+					maximizing_color,
+					alpha,
+					beta,
+					options,
+					history_table,
+					butterfly_table,
+					depth + 1,
+					deadline,
+				),
+			)
 			if options.use_alpha_beta:
 				alpha = max(alpha, value)
 				if alpha >= beta:
@@ -646,7 +659,20 @@ def _quiescence(
 	for piece, move in ordered:
 		_check_time(deadline)
 		child = board.simulateMove(move)
-		value = min(value, _quiescence(child, maximizing_color, alpha, beta, options, depth + 1, deadline))
+		value = min(
+			value,
+			_quiescence(
+				child,
+				maximizing_color,
+				alpha,
+				beta,
+				options,
+				history_table,
+				butterfly_table,
+				depth + 1,
+				deadline,
+			),
+		)
 		if options.use_alpha_beta:
 			beta = min(beta, value)
 			if alpha >= beta:
