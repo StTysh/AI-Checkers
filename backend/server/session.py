@@ -238,6 +238,14 @@ class GameSession:
             color = self.game.current_player if payload.color is None else _color_from_label(payload.color)
             if color != self.game.current_player:
                 raise ValueError("AI move requested for color that is not on turn.")
+            if self.game.winner is not None:
+                return self._serialize_locked()
+            winner = self.game.board.is_game_over()
+            if winner is not None:
+                self.game.winner = winner
+                self._state_version += 1
+                self._clear_pending_ai_moves()
+                return self._serialize_locked()
 
             overrides = deepcopy(self.player_settings[color])
             overrides["type"] = payload.algorithm
@@ -593,6 +601,7 @@ class GameSession:
             random_seed = settings.get("randomSeed")
             mcts_parallel = bool(settings.get("mctsParallel"))
             mcts_workers = int(settings.get("mctsWorkers") or 1)
+            resolved_mcts_workers = self._resolve_parallel_workers(color, mcts_parallel, mcts_workers)
             rollout_policy = settings.get("rolloutPolicy") or "random"
             guidance_depth = int(settings.get("guidanceDepth") or 1)
             rollout_cutoff_depth = settings.get("rolloutCutoffDepth")
@@ -604,7 +613,7 @@ class GameSession:
                 exploration_constant=exploration_constant,
                 random_seed=random_seed,
                 use_parallel=mcts_parallel,
-                workers=mcts_workers,
+                workers=resolved_mcts_workers,
                 rollout_policy=rollout_policy,
                 guidance_depth=guidance_depth,
                 rollout_cutoff_depth=rollout_cutoff_depth,
@@ -645,6 +654,8 @@ class GameSession:
             if start_policy == "black" or (start_policy == "alternate" and index % 2 == 0):
                 starting_color = Color.BLACK
                 game.board.turn = Color.BLACK
+                game.board.zobrist_hash = game.board.recompute_hash()
+                game.board._moves_cache.clear()
                 game.current_player = Color.BLACK
 
             move_cap = 300
@@ -677,7 +688,10 @@ class GameSession:
                     continue
 
                 move_start = time.perf_counter()
-                decision = controller.select_move(game, cancel_event=state.stop_event)
+                try:
+                    decision = controller.select_move(game, cancel_event=state.stop_event)
+                except CancelledError:
+                    break
                 move_end = time.perf_counter()
                 if decision is None:
                     break
@@ -781,6 +795,6 @@ class GameSession:
         global_max = max(1, cpu_total - 2)
         other_color = Color.BLACK if color == Color.WHITE else Color.WHITE
         other_settings = self.player_settings.get(other_color, {})
-        other_parallel = bool(other_settings.get("parallel"))
+        other_parallel = bool(other_settings.get("parallel") or other_settings.get("mctsParallel"))
         share = max(1, global_max // 2) if other_parallel else global_max
         return min(max(1, requested), share)

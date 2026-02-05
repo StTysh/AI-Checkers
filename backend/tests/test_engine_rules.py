@@ -19,9 +19,7 @@ from core.pieces import Color, Man  # noqa: E402
 
 class InternationalMajorityCaptureTests(unittest.TestCase):
     def test_international_majority_capture_prefers_longest_sequence(self) -> None:
-        board = Board(10)
-        board.board = [[None for _ in range(10)] for _ in range(10)]
-        board.turn = Color.WHITE
+        board = Board.empty(10, turn=Color.WHITE)
 
         white = Man(Color.WHITE, 6, 1)
         board.board[6][1] = white
@@ -29,6 +27,7 @@ class InternationalMajorityCaptureTests(unittest.TestCase):
         board.board[5][2] = Man(Color.BLACK, 5, 2)
         board.board[3][4] = Man(Color.BLACK, 3, 4)
         board.board[7][2] = Man(Color.BLACK, 7, 2)
+        board.zobrist_hash = board.recompute_hash()
 
         moves = board.getAllValidMoves(Color.WHITE)[white]
         self.assertTrue(moves)

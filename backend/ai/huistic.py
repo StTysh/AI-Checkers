@@ -24,6 +24,9 @@ def evaluate_board(board: Board, perspective: Color) -> float:
 	promotion = {Color.WHITE: 0.0, Color.BLACK: 0.0}
 	edges = {Color.WHITE: 0.0, Color.BLACK: 0.0}
 	support = {Color.WHITE: 0.0, Color.BLACK: 0.0}
+	capture_map = {Color.WHITE: {}, Color.BLACK: {}}
+	quiet_map = {Color.WHITE: {}, Color.BLACK: {}}
+	capture_pressure = {Color.WHITE: 0.0, Color.BLACK: 0.0}
 
 	for piece in board.getAllPieces():
 		base = _KING_VALUE if piece.is_king else _MAN_VALUE
@@ -40,8 +43,26 @@ def evaluate_board(board: Board, perspective: Color) -> float:
 		edges[piece.color] += _edge_anchor(piece, board.boardSize)
 		support[piece.color] += _support_network(piece, board)
 
-	mobility = _mobility_scores(board)
-	capture_pressure = _capture_pressure(board)
+		# Move generation is expensive: compute per-piece moves once and reuse for mobility and pressure.
+		moves = piece.possibleMoves(board)
+		if not moves:
+			continue
+		if moves[0].is_capture:
+			capture_map[piece.color][piece.position] = tuple(moves)
+			capture_pressure[piece.color] += float(len(moves))
+		else:
+			quiet_map[piece.color][piece.position] = tuple(moves)
+
+	mobility = {Color.WHITE: 0.0, Color.BLACK: 0.0}
+	for color in (Color.WHITE, Color.BLACK):
+		if capture_map[color]:
+			legal = capture_map[color]
+			if board.boardSize != 8:
+				legal = board._filter_majority_captures(legal)
+			mobility[color] = float(sum(len(options) for options in legal.values()))
+		else:
+			mobility[color] = float(sum(len(options) for options in quiet_map[color].values()))
+
 	score = (
 		material[perspective]
 		- material[opponent]
@@ -84,15 +105,6 @@ def _back_rank_guard(piece: Piece, size: int) -> float:
 	return 1.0 if piece.row == target_row else 0.0
 
 
-# Counts total legal moves per side to measure freedom of action.
-def _mobility_scores(board: Board) -> dict[Color, float]:
-	mobility = {Color.WHITE: 0.0, Color.BLACK: 0.0}
-	for color in (Color.WHITE, Color.BLACK):
-		moves = board.getAllValidMoves(color)
-		mobility[color] = float(sum(len(options) for options in moves.values()))
-	return mobility
-
-
 # Scores men that are only a few ranks away from crowning.
 def _promotion_threat(piece: Piece, size: int) -> float:
 	if piece.is_king or size <= 1:
@@ -125,17 +137,6 @@ def _support_network(piece: Piece, board: Board) -> float:
 			if neighbor and neighbor.color == piece.color:
 				support += 1
 	return support / 4.0
-
-
-# Tallies immediate capture options to reflect tactical threats.
-def _capture_pressure(board: Board) -> dict[Color, float]:
-	pressure = {Color.WHITE: 0.0, Color.BLACK: 0.0}
-	for piece in board.getAllPieces():
-		moves = piece.possibleMoves(board)
-		captures = sum(1 for move in moves if move.is_capture)
-		if captures:
-			pressure[piece.color] += captures
-	return pressure
 
 
 # Convenience switch between colors.

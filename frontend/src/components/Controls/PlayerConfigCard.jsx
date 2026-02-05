@@ -500,7 +500,7 @@ const PlayerConfigCard = ({ color }) => {
                   value={config.iterations}
                   {...sliderHandlers("iterations")}
                   min={50}
-                  max={1000}
+                  max={5000}
                   step={50}
                   valueLabelDisplay="auto"
                   disabled={configLocked}

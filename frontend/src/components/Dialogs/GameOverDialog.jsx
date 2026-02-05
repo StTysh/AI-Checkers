@@ -17,7 +17,6 @@ const GameOverDialog = () => {
     setRestarting(true);
     try {
       setGameReady(false);
-      await api.waitForAiIdle();
       await api.resetGame({ variant });
     } finally {
       setRestarting(false);

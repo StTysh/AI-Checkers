@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from .board import Board
+from .board import Board, UndoRecord
 from .move import Move
 from .pieces import Color, Piece
 from .player import PlayerController
@@ -13,6 +13,7 @@ class MoveRecord:
     piece_after: Piece
     move: Move
     captured: list[Piece]
+    undo: Optional[UndoRecord] = None
 
 class Game:
     """Core game wrapper that can run on different board sizes."""
@@ -70,8 +71,9 @@ class Game:
             print("Invalid move selection.")
             return False
         snapshot = piece.getCopy()
-        captured = self.board.movePiece(piece, move)
-        end_row, end_col = move.end
+        undo = self.board.make_move(piece, move)
+        captured = list(undo.captured)
+        end_row, end_col = undo.end
         moved_piece = self.board.getPiece(end_row, end_col)
         if moved_piece is None:
             raise RuntimeError("Moved piece is missing from the board.")
@@ -81,6 +83,7 @@ class Game:
                 piece_after=moved_piece,
                 move=move,
                 captured=captured.copy(),
+                undo=undo,
             )
         )
         self.winner = self.board.is_game_over()
@@ -93,14 +96,19 @@ class Game:
             print("No moves to undo.")
             return
         record = self.move_history.pop()
-        end_row, end_col = record.move.end
-        self.board.board[end_row][end_col] = None
-        for cap in record.captured:
-            self.board.board[cap.row][cap.col] = cap
-        start_row, start_col = record.move.start
-        record.piece_before.move(start_row, start_col)
-        self.board.board[start_row][start_col] = record.piece_before
-        self.board.turn = record.piece_before.color
+        if record.undo is not None:
+            self.board.unmake_move(record.undo)
+        else:
+            end_row, end_col = record.move.end
+            self.board.board[end_row][end_col] = None
+            for cap in record.captured:
+                self.board.board[cap.row][cap.col] = cap
+            start_row, start_col = record.move.start
+            record.piece_before.move(start_row, start_col)
+            self.board.board[start_row][start_col] = record.piece_before
+            self.board.turn = record.piece_before.color
+            self.board.zobrist_hash = self.board.recompute_hash()
+            self.board._moves_cache.clear()
         self.switchTurn()
         self.winner = None
         

@@ -85,18 +85,29 @@ export const useGameAPI = store => {
   const requestAIMove = useCallback(
     async payload => {
       const { setBoardState, setError } = store.getState();
+      const controller = new AbortController();
+      aiRequestAbortRef.current?.abort();
+      aiRequestAbortRef.current = controller;
       try {
         const data = await handleResponse(
           await fetch(`${API_BASE}/ai-move`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload ?? {}),
+            signal: controller.signal,
           }),
         );
         setBoardState(data);
       } catch (error) {
+        if (error?.name === "AbortError") {
+          return;
+        }
         setError(error.message);
         throw error;
+      } finally {
+        if (aiRequestAbortRef.current === controller) {
+          aiRequestAbortRef.current = null;
+        }
       }
     },
     [store],
@@ -104,6 +115,14 @@ export const useGameAPI = store => {
 
   const aiLoopRef = useRef(false);
   const aiIdleWaitersRef = useRef([]);
+  const aiRequestAbortRef = useRef(null);
+  const aiLoopTokenRef = useRef(0);
+
+  const cancelAiRequests = useCallback(() => {
+    aiLoopTokenRef.current += 1;
+    aiRequestAbortRef.current?.abort();
+    aiRequestAbortRef.current = null;
+  }, []);
 
   const notifyAiIdle = useCallback(() => {
     aiIdleWaitersRef.current.forEach(resolve => resolve());
@@ -142,8 +161,10 @@ export const useGameAPI = store => {
   const runAITurns = useCallback(async () => {
     if (aiLoopRef.current) return;
     aiLoopRef.current = true;
+    const token = aiLoopTokenRef.current;
     try {
       while (true) {
+        if (aiLoopTokenRef.current !== token) break;
         const { boardState, gameReady, gameMode, playerConfig, manualAiApproval } = store.getState();
         if (!gameReady || !boardState || boardState.winner) break;
         if (gameMode === "pvp") break;
@@ -221,6 +242,7 @@ export const useGameAPI = store => {
   const changeVariant = useCallback(
     async variant => {
       const { setBoardState, setError, setGameReady } = store.getState();
+      cancelAiRequests();
       try {
         const data = await handleResponse(
           await fetch(`${API_BASE}/variant`, {
@@ -235,12 +257,13 @@ export const useGameAPI = store => {
         setError(error.message);
       }
     },
-    [store],
+    [cancelAiRequests, store],
   );
 
   const resetGame = useCallback(
     async payload => {
       const { setBoardState, setError, setGameReady } = store.getState();
+      cancelAiRequests();
       try {
         const data = await handleResponse(
           await fetch(`${API_BASE}/reset`, {
@@ -255,12 +278,13 @@ export const useGameAPI = store => {
         setError(error.message);
       }
     },
-    [store],
+    [cancelAiRequests, store],
   );
 
   const configurePlayers = useCallback(
     async config => {
       const { setBoardState, setError } = store.getState();
+      cancelAiRequests();
       try {
         const data = await handleResponse(
           await fetch(`${API_BASE}/config`, {
@@ -274,11 +298,12 @@ export const useGameAPI = store => {
         setError(error.message);
       }
     },
-    [store],
+    [cancelAiRequests, store],
   );
 
   const undoMove = useCallback(async () => {
     const { setBoardState, setError } = store.getState();
+    cancelAiRequests();
     try {
       const data = await handleResponse(
         await fetch(`${API_BASE}/undo`, {
@@ -290,7 +315,7 @@ export const useGameAPI = store => {
       setError(error.message);
       throw error;
     }
-  }, [store]);
+  }, [cancelAiRequests, store]);
 
   const fetchSystemInfo = useCallback(async () => {
     const { setError } = store.getState();
@@ -377,6 +402,7 @@ export const useGameAPI = store => {
       requestAIMove,
       runAITurns,
       waitForAiIdle,
+      cancelAiRequests,
       undoMove,
       performPendingAIMove,
       getValidMoves,
@@ -395,6 +421,7 @@ export const useGameAPI = store => {
       requestAIMove,
       runAITurns,
       waitForAiIdle,
+      cancelAiRequests,
       getValidMoves,
       changeVariant,
       resetGame,

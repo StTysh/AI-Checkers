@@ -52,3 +52,12 @@ def compute_board_hash(board: "Board") -> int:
             result ^= table[(row, col, _piece_variant(piece))]
 
     return result
+
+
+def zobrist_turn_key(color: Color) -> int:
+    return _TURN_KEYS[color]
+
+
+def zobrist_piece_key(board_size: int, row: int, col: int, piece: Piece) -> int:
+    table = _table_for_size(board_size)
+    return table[(row, col, _piece_variant(piece))]

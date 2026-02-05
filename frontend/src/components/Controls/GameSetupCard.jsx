@@ -81,7 +81,6 @@ const GameSetupCard = () => {
     setResetting(true);
     try {
       setGameReady(false);
-      await api.waitForAiIdle();
       await api.resetGame({ variant });
     } finally {
       setResetting(false);
@@ -92,7 +91,6 @@ const GameSetupCard = () => {
     if (!boardState?.canUndo || gameMode === "aivai") return;
     setUndoing(true);
     try {
-      await api.waitForAiIdle();
       await api.undoMove();
     } finally {
       setUndoing(false);
