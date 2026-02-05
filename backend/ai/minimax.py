@@ -5,9 +5,10 @@ import os
 import time
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
-from concurrent.futures import ProcessPoolExecutor, TimeoutError
+from dataclasses import dataclass, replace
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from enum import Enum, auto
+from threading import Event
 from typing import DefaultDict, Dict, Iterable, List, Optional, Tuple
 
 from core.board import Board
@@ -16,6 +17,7 @@ from core.move import Move
 from core.pieces import Color, Piece
 
 from .huistic import evaluate_board
+from .cancel import CancelledError, raise_if_cancelled
 
 _WIN_SCORE = 1_000_000.0
 _MAX_TT_ENTRIES = 500_000
@@ -57,14 +59,14 @@ class Bound(Enum):
 
 @dataclass
 class TTEntry:
-	key: int
+	key: tuple[int, Color]
 	depth: int
 	score: float
 	flag: Bound
 	best_move: Optional[Move]
 
 
-TranspositionTable = Dict[int, TTEntry]
+TranspositionTable = Dict[tuple[int, Color], TTEntry]
 KillerTable = DefaultDict[int, List[Move]]
 HistoryTable = DefaultDict[Tuple[int, int, int, int, int], int]
 ButterflyTable = DefaultDict[Tuple[int, int, int, int, int], int]
@@ -107,9 +109,12 @@ def select_move(
 	time_limit_ms: int = 1000,
 	use_parallel: bool = False,
 	workers: int = 1,
+	cancel_event: Optional[Event] = None,
 ) -> Optional[Tuple[Piece, Move]]:
 	if depth <= 0:
 		raise ValueError("Depth must be positive.")
+
+	raise_if_cancelled(cancel_event)
 
 	options = MinimaxOptions(
 		use_alpha_beta=use_alpha_beta,
@@ -158,7 +163,7 @@ def select_move(
 		moves_map,
 		board,
 		options,
-		tt_move=_root_tt_move(board, options),
+		tt_move=_root_tt_move(board, player, options),
 		killer_moves=defaultdict(list),
 		history_table=history_table,
 		butterfly_table=butterfly_table,
@@ -178,6 +183,7 @@ def select_move(
 
 	if use_iterative_deepening:
 		for current_depth in range(1, max_depth + 1):
+			raise_if_cancelled(cancel_event)
 			alpha = -math.inf
 			beta = math.inf
 			window = options.aspiration_window
@@ -199,6 +205,7 @@ def select_move(
 						use_parallel=use_parallel,
 						workers=workers,
 						deadline=deadline,
+						cancel_event=cancel_event,
 					)
 					if not options.use_aspiration or not completed:
 						break
@@ -215,6 +222,8 @@ def select_move(
 					break
 			except _TimeUp:
 				break
+			except CancelledError:
+				raise
 			if completed and choice is not None:
 				best_choice = choice
 				best_score = score
@@ -234,6 +243,7 @@ def select_move(
 			use_parallel=use_parallel,
 			workers=workers,
 			deadline=None,
+			cancel_event=cancel_event,
 		)
 
 	return best_choice
@@ -243,10 +253,10 @@ class _TimeUp(RuntimeError):
 	pass
 
 
-def _root_tt_move(board: Board, options: MinimaxOptions) -> Optional[Move]:
+def _root_tt_move(board: Board, maximizing_color: Color, options: MinimaxOptions) -> Optional[Move]:
 	if not options.use_transposition:
 		return None
-	entry = _TRANSPOSITION_TABLE.get(board.compute_hash())
+	entry = _TRANSPOSITION_TABLE.get((board.compute_hash(), maximizing_color))
 	return entry.best_move if entry else None
 
 
@@ -264,6 +274,7 @@ def _search_root(
 	use_parallel: bool,
 	workers: int,
 	deadline: Optional[float],
+	cancel_event: Optional[Event],
 ) -> Tuple[Optional[Tuple[Piece, Move]], float, bool]:
 	killer_moves: KillerTable = defaultdict(list)
 	best_score = -math.inf
@@ -282,11 +293,12 @@ def _search_root(
 			beta=beta,
 			workers=workers,
 			deadline=deadline,
+			cancel_event=cancel_event,
 		)
 		return choice, score, completed
 
 	for piece, move in root_moves:
-		_check_time(deadline)
+		_check_time(deadline, cancel_event)
 		projected = board.simulateMove(move)
 		score = _alphabeta(
 			projected,
@@ -300,6 +312,7 @@ def _search_root(
 			butterfly_table,
 			ply=1,
 			deadline=deadline,
+			cancel_event=cancel_event,
 		)
 		if score > best_score + 1e-6:
 			best_score = score
@@ -325,13 +338,19 @@ def _search_root_parallel(
 	beta: float,
 	workers: int,
 	deadline: Optional[float],
+	cancel_event: Optional[Event],
 ) -> Tuple[Optional[Tuple[Piece, Move]], float, bool]:
 	worker_count = _clamp_workers(workers)
 	best_score = -math.inf
 	best_choice: Optional[Tuple[Piece, Move]] = None
 	completed = True
 
-	with ProcessPoolExecutor(max_workers=worker_count) as executor:
+	# Process pools are fragile/heavy inside a Windows web server (spawn + uvicorn reload +
+	# threadpool execution of sync endpoints). Use threads here and disable global TT/endgame
+	# tablebase usage per worker to avoid races.
+	worker_options = replace(options, use_transposition=False, use_endgame_tablebase=False)
+
+	with ThreadPoolExecutor(max_workers=worker_count) as executor:
 		futures = []
 		for _, move in root_moves:
 			futures.append(
@@ -341,12 +360,13 @@ def _search_root_parallel(
 					move,
 					depth - 1,
 					player,
-					options,
-						history_table,
-						butterfly_table,
-						alpha,
-						beta,
+					worker_options,
+					defaultdict(int, history_table),
+					defaultdict(int, butterfly_table),
+					alpha,
+					beta,
 					deadline,
+					cancel_event,
 				)
 			)
 
@@ -359,6 +379,9 @@ def _search_root_parallel(
 			except _TimeUp:
 				completed = False
 				break
+			except CancelledError:
+				completed = False
+				break
 			if score > best_score + 1e-6:
 				piece = board.getPiece(*move.start)
 				if piece is not None:
@@ -368,6 +391,9 @@ def _search_root_parallel(
 		if not completed:
 			for future in futures:
 				future.cancel()
+
+		if cancel_event is not None and cancel_event.is_set():
+			raise CancelledError()
 
 	return best_choice, best_score, completed
 
@@ -384,10 +410,11 @@ def _alphabeta(
 	butterfly_table: ButterflyTable,
 	ply: int,
     deadline: Optional[float],
+	cancel_event: Optional[Event],
 ) -> float:
-	_check_time(deadline)
+	_check_time(deadline, cancel_event)
 	if options.use_endgame_tablebase and _is_endgame(board, options):
-		return _solve_endgame(board, maximizing_color, options, deadline, 0, set())
+		return _solve_endgame(board, maximizing_color, options, deadline, 0, set(), cancel_event)
 	winner = board.is_game_over()
 	if winner is not None:
 		if winner == maximizing_color:
@@ -408,6 +435,7 @@ def _alphabeta(
 				butterfly_table,
 				0,
 				deadline,
+				cancel_event,
 			)
 		return evaluate_board(board, maximizing_color)
 
@@ -419,10 +447,11 @@ def _alphabeta(
 	beta_orig = beta
 	best_move: Optional[Move] = None
 	board_hash = board.compute_hash() if options.use_transposition else None
+	tt_key = (board_hash, maximizing_color) if board_hash is not None else None
 	tt_entry = None
 
-	if options.use_transposition and board_hash is not None:
-		tt_entry = _TRANSPOSITION_TABLE.get(board_hash)
+	if options.use_transposition and tt_key is not None:
+		tt_entry = _TRANSPOSITION_TABLE.get(tt_key)
 		if tt_entry and tt_entry.depth >= depth:
 			if tt_entry.flag == Bound.EXACT:
 				return tt_entry.score
@@ -448,6 +477,7 @@ def _alphabeta(
 			butterfly_table,
 			ply + 1,
 			deadline,
+			cancel_event,
 		)
 		if board.turn == maximizing_color and null_score >= beta:
 			return null_score
@@ -468,7 +498,7 @@ def _alphabeta(
 	if board.turn == maximizing_color:
 		value = -math.inf
 		for idx, (piece, move) in enumerate(ordered_moves):
-			_check_time(deadline)
+			_check_time(deadline, cancel_event)
 			child = board.simulateMove(move)
 			if options.use_butterfly_heuristic and not move.is_capture:
 				butterfly_table[_move_key(move)] += 1
@@ -486,6 +516,7 @@ def _alphabeta(
 					butterfly_table,
 					ply + 1,
 					deadline,
+					cancel_event,
 				)
 				if score > alpha:
 					score = _alphabeta(
@@ -500,6 +531,7 @@ def _alphabeta(
 						butterfly_table,
 						ply + 1,
 						deadline,
+						cancel_event,
 					)
 			else:
 				score = _alphabeta(
@@ -514,6 +546,7 @@ def _alphabeta(
 					butterfly_table,
 					ply + 1,
 					deadline,
+					cancel_event,
 				)
 			if score > value:
 				value = score
@@ -529,7 +562,7 @@ def _alphabeta(
 	else:
 		value = math.inf
 		for idx, (piece, move) in enumerate(ordered_moves):
-			_check_time(deadline)
+			_check_time(deadline, cancel_event)
 			child = board.simulateMove(move)
 			if options.use_butterfly_heuristic and not move.is_capture:
 				butterfly_table[_move_key(move)] += 1
@@ -547,6 +580,7 @@ def _alphabeta(
 					butterfly_table,
 					ply + 1,
 					deadline,
+					cancel_event,
 				)
 				if score < beta:
 					score = _alphabeta(
@@ -561,6 +595,7 @@ def _alphabeta(
 						butterfly_table,
 						ply + 1,
 						deadline,
+						cancel_event,
 					)
 			else:
 				score = _alphabeta(
@@ -575,6 +610,7 @@ def _alphabeta(
 					butterfly_table,
 					ply + 1,
 					deadline,
+					cancel_event,
 				)
 			if score < value:
 				value = score
@@ -588,8 +624,8 @@ def _alphabeta(
 						history_table[_move_key(move)] += depth * depth
 					break
 
-	if options.use_transposition and board_hash is not None:
-		_store_tt_entry(board_hash, depth, value, alpha_orig, beta_orig, best_move)
+	if options.use_transposition and tt_key is not None:
+		_store_tt_entry(tt_key, depth, value, alpha_orig, beta_orig, best_move)
 
 	return value
 
@@ -604,8 +640,9 @@ def _quiescence(
 	butterfly_table: ButterflyTable,
 	depth: int,
     deadline: Optional[float],
+	cancel_event: Optional[Event],
 ) -> float:
-	_check_time(deadline)
+	_check_time(deadline, cancel_event)
 	stand_pat = evaluate_board(board, maximizing_color)
 	if options.use_alpha_beta and stand_pat >= beta:
 		return beta
@@ -633,7 +670,7 @@ def _quiescence(
 	if board.turn == maximizing_color:
 		value = stand_pat
 		for piece, move in ordered:
-			_check_time(deadline)
+			_check_time(deadline, cancel_event)
 			child = board.simulateMove(move)
 			value = max(
 				value,
@@ -647,6 +684,7 @@ def _quiescence(
 					butterfly_table,
 					depth + 1,
 					deadline,
+					cancel_event,
 				),
 			)
 			if options.use_alpha_beta:
@@ -657,7 +695,7 @@ def _quiescence(
 
 	value = stand_pat
 	for piece, move in ordered:
-		_check_time(deadline)
+		_check_time(deadline, cancel_event)
 		child = board.simulateMove(move)
 		value = min(
 			value,
@@ -671,6 +709,7 @@ def _quiescence(
 				butterfly_table,
 				depth + 1,
 				deadline,
+				cancel_event,
 			),
 		)
 		if options.use_alpha_beta:
@@ -813,8 +852,9 @@ def _solve_endgame(
 	deadline: Optional[float],
 	ply: int,
 	seen: set[Tuple[int, Color]],
+	cancel_event: Optional[Event],
 ) -> float:
-	_check_time(deadline)
+	_check_time(deadline, cancel_event)
 	winner = board.is_game_over()
 	if winner is not None:
 		if winner == maximizing_color:
@@ -850,15 +890,15 @@ def _solve_endgame(
 	if board.turn == maximizing_color:
 		value = -math.inf
 		for _, move in ordered:
-			_check_time(deadline)
+			_check_time(deadline, cancel_event)
 			child = board.simulateMove(move)
-			value = max(value, _solve_endgame(child, maximizing_color, options, deadline, ply + 1, seen))
+			value = max(value, _solve_endgame(child, maximizing_color, options, deadline, ply + 1, seen, cancel_event))
 	else:
 		value = math.inf
 		for _, move in ordered:
-			_check_time(deadline)
+			_check_time(deadline, cancel_event)
 			child = board.simulateMove(move)
-			value = min(value, _solve_endgame(child, maximizing_color, options, deadline, ply + 1, seen))
+			value = min(value, _solve_endgame(child, maximizing_color, options, deadline, ply + 1, seen, cancel_event))
 
 	seen.remove(key)
 	_ENDGAME_TABLEBASE[key] = value
@@ -890,7 +930,7 @@ def _register_killer_move(killer_moves: KillerTable, ply: int, move: Move) -> No
 
 
 def _store_tt_entry(
-	key: int,
+	key: tuple[int, Color],
 	depth: int,
 	score: float,
 	alpha_orig: float,
@@ -923,6 +963,7 @@ def _evaluate_root_move(
 	alpha: float,
 	beta: float,
 	deadline: Optional[float],
+	cancel_event: Optional[Event],
 ) -> Tuple[Move, float]:
 	projected = board.simulateMove(move)
 	score = _alphabeta(
@@ -937,6 +978,7 @@ def _evaluate_root_move(
 		butterfly_table,
 		ply=1,
 		deadline=deadline,
+		cancel_event=cancel_event,
 	)
 	return move, score
 
@@ -945,7 +987,8 @@ def _alpha_inf() -> float:
 	return math.inf
 
 
-def _check_time(deadline: Optional[float]) -> None:
+def _check_time(deadline: Optional[float], cancel_event: Optional[Event]) -> None:
+	raise_if_cancelled(cancel_event)
 	if deadline is not None and time.perf_counter() >= deadline:
 		raise _TimeUp()
 

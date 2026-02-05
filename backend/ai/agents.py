@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from core.game import Game
 from core.player import PlayerController, PlayerKind
+from threading import Event
+from typing import Optional
 
 from .minimax import select_move as minimax_select
 from .mcts import select_move as mcts_select
@@ -43,7 +45,7 @@ def create_minimax_controller(
 ) -> PlayerController:
     depth = max(1, depth)
 
-    def _policy(game: Game):
+    def _policy(game: Game, cancel_event: Optional[Event] = None):
         return minimax_select(
             game,
             depth=depth,
@@ -71,6 +73,7 @@ def create_minimax_controller(
             time_limit_ms=time_limit_ms,
             use_parallel=use_parallel,
             workers=workers,
+            cancel_event=cancel_event,
         )
 
     flags = []
@@ -121,7 +124,7 @@ def create_mcts_controller(
     rollout_depth = max(1, rollout_depth)
     exploration_constant = max(0.01, exploration_constant)
 
-    def _policy(game: Game):
+    def _policy(game: Game, cancel_event: Optional[Event] = None):
         return mcts_select(
             game,
             iterations=iterations,
@@ -139,6 +142,7 @@ def create_mcts_controller(
             progressive_widening=progressive_widening,
             pw_k=pw_k,
             pw_alpha=pw_alpha,
+            cancel_event=cancel_event,
         )
 
     suffix = f" (iter={iterations}, depth={rollout_depth}, C={exploration_constant:.2f})"

@@ -14,6 +14,7 @@ from threading import Lock
 from typing import Any, Iterable, Optional
 
 from ai.agents import create_minimax_controller, create_mcts_controller
+from ai.cancel import CancelledError
 from core.game import Game
 from core.move import Move
 from core.pieces import Color, Piece
@@ -123,6 +124,11 @@ class GameSession:
         self.lock = Lock()
         self.variant = "british"
         self.game = Game(board_size=VARIANT_TO_SIZE[self.variant])
+        self._state_version = 0
+        self._ai_job_lock = Lock()
+        self._ai_job_seq = 0
+        self._ai_active_job_id = 0
+        self._ai_cancel_event: Optional[threading.Event] = None
         self.player_settings: dict[Color, dict[str, Any]] = {
             Color.WHITE: _default_player_settings(),
             Color.BLACK: _default_player_settings(),
@@ -137,28 +143,48 @@ class GameSession:
 
     # public API ---------------------------------------------------------
 
+    def cancel_ai(self) -> None:
+        """Signal any in-flight AI computation to stop ASAP."""
+        with self._ai_job_lock:
+            if self._ai_cancel_event is not None:
+                self._ai_cancel_event.set()
+
+    def _start_ai_job(self) -> tuple[int, threading.Event]:
+        with self._ai_job_lock:
+            if self._ai_cancel_event is not None:
+                self._ai_cancel_event.set()
+            self._ai_job_seq += 1
+            self._ai_active_job_id = self._ai_job_seq
+            self._ai_cancel_event = threading.Event()
+            return self._ai_active_job_id, self._ai_cancel_event
+
     def serialize(self) -> dict[str, Any]:
         with self.lock:
             return self._serialize_locked()
 
     def reset(self, payload: Optional[ResetRequest] = None) -> dict[str, Any]:
+        self.cancel_ai()
         with self.lock:
             if payload and payload.variant:
                 self.variant = payload.variant
             self.game.reset(board_size=VARIANT_TO_SIZE[self.variant])
+            self._state_version += 1
             self._clear_pending_ai_moves()
             self._apply_player_controllers()
             return self._serialize_locked()
 
     def set_variant(self, payload: VariantRequest) -> dict[str, Any]:
+        self.cancel_ai()
         with self.lock:
             self.variant = payload.variant
             self.game.reset(board_size=VARIANT_TO_SIZE[self.variant])
+            self._state_version += 1
             self._clear_pending_ai_moves()
             self._apply_player_controllers()
             return self._serialize_locked()
 
     def configure_players(self, payload: ConfigRequest) -> dict[str, Any]:
+        self.cancel_ai()
         with self.lock:
             config = payload.model_dump(exclude_unset=True)
             if not config:
@@ -174,6 +200,7 @@ class GameSession:
                 self.player_settings[color] = merged
                 self.game.setPlayer(color, controller)
 
+            self._state_version += 1
             self._clear_pending_ai_moves()
             return self._serialize_locked()
 
@@ -189,6 +216,7 @@ class GameSession:
             }
 
     def make_move(self, payload: MoveRequest) -> dict[str, Any]:
+        self.cancel_ai()
         with self.lock:
             piece = self._require_piece(payload.start.row, payload.start.col)
             if piece.color != self.game.current_player:
@@ -199,14 +227,18 @@ class GameSession:
                 raise ValueError("Requested move path is invalid for this piece.")
             if not self.game.makeMove(piece, move):
                 raise RuntimeError("Move execution failed.")
+            self._state_version += 1
             self._clear_pending_ai_moves()
             return self._serialize_locked()
 
     def run_ai_move(self, payload: AIMoveRequest) -> dict[str, Any]:
+        job_id, cancel_event = self._start_ai_job()
+
         with self.lock:
             color = self.game.current_player if payload.color is None else _color_from_label(payload.color)
             if color != self.game.current_player:
                 raise ValueError("AI move requested for color that is not on turn.")
+
             overrides = deepcopy(self.player_settings[color])
             overrides["type"] = payload.algorithm
             if payload.depth is not None:
@@ -289,23 +321,47 @@ class GameSession:
                 overrides["pwK"] = payload.pwK
             if payload.pwAlpha is not None:
                 overrides["pwAlpha"] = payload.pwAlpha
+
             controller = self._controller_from_settings(color, overrides)
             self.game.setPlayer(color, controller)
             if payload.persist:
                 self.player_settings[color] = overrides
+
             commit_now = payload.commitImmediately
             if not commit_now and self.pending_ai_moves[color]:
                 raise RuntimeError("AI move already pending for this color.")
 
-            decision = controller.select_move(self.game)
-            if decision is None:
-                raise RuntimeError("AI controller could not choose a move.")
-            piece, move = decision
+            start_version = self._state_version
+            snapshot = Game(board_size=self.game.board.boardSize)
+            snapshot.board = self.game.board.copy()
+            snapshot.current_player = self.game.current_player
+            snapshot.winner = self.game.winner
+            snapshot.players = self.game.players
+
+        try:
+            decision = controller.select_move(snapshot, cancel_event=cancel_event)
+        except CancelledError:
+            with self.lock:
+                return self._serialize_locked()
+
+        if decision is None:
+            raise RuntimeError("AI controller could not choose a move.")
+        _, move = decision
+
+        with self.lock:
+            if job_id != self._ai_active_job_id or cancel_event.is_set() or start_version != self._state_version:
+                return self._serialize_locked()
+            if color != self.game.current_player:
+                return self._serialize_locked()
 
             if commit_now:
                 self._clear_pending_ai_move(color)
+                piece = self._require_piece(*move.start)
+                if piece.color != color:
+                    return self._serialize_locked()
                 if not self.game.makeMove(piece, move):
                     raise RuntimeError("Move execution failed.")
+                self._state_version += 1
             else:
                 self.pending_ai_moves[color] = PendingAIMove(color=color, move=move, start=move.start)
             return self._serialize_locked()
@@ -334,10 +390,12 @@ class GameSession:
             return self._serialize_locked()
 
     def undo_move(self) -> dict[str, Any]:
+        self.cancel_ai()
         with self.lock:
             if not self.game.move_history:
                 raise ValueError("No moves to undo.")
             self.game.undoMove()
+            self._state_version += 1
             self._clear_pending_ai_moves()
             return self._serialize_locked()
 
@@ -619,7 +677,7 @@ class GameSession:
                     continue
 
                 move_start = time.perf_counter()
-                decision = controller.select_move(game)
+                decision = controller.select_move(game, cancel_event=state.stop_event)
                 move_end = time.perf_counter()
                 if decision is None:
                     break

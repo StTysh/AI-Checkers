@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 import os
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
+import secrets
+import time
+from threading import Lock
 
 from .schemas import (
     AIMoveRequest,
@@ -20,6 +23,38 @@ from .schemas import (
 from .session import GameSession
 
 
+_SESSION_COOKIE_NAME = "checkers_session_id"
+
+
+class _SessionStore:
+    def __init__(self, *, max_sessions: int = 500) -> None:
+        self._lock = Lock()
+        self._sessions: dict[str, GameSession] = {}
+        self._last_access: dict[str, float] = {}
+        self._max_sessions = max(1, int(max_sessions))
+
+    def get_or_create(self, session_id: Optional[str]) -> tuple[str, GameSession, bool]:
+        now = time.time()
+        with self._lock:
+            if session_id:
+                session = self._sessions.get(session_id)
+                if session is not None:
+                    self._last_access[session_id] = now
+                    return session_id, session, False
+
+            session_id = secrets.token_urlsafe(24)
+            session = GameSession()
+            self._sessions[session_id] = session
+            self._last_access[session_id] = now
+
+            if len(self._sessions) > self._max_sessions:
+                oldest = min(self._last_access.items(), key=lambda item: item[1])[0]
+                self._sessions.pop(oldest, None)
+                self._last_access.pop(oldest, None)
+
+            return session_id, session, True
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Checkers AI Backend", version="1.0.0")
     app.add_middleware(
@@ -30,9 +65,19 @@ def create_app() -> FastAPI:
         allow_credentials=True,
     )
 
-    session = GameSession()
+    store = _SessionStore()
 
-    def get_session() -> GameSession:
+    def get_session(request: Request, response: Response) -> GameSession:
+        session_id = request.cookies.get(_SESSION_COOKIE_NAME)
+        session_id, session, created = store.get_or_create(session_id)
+        if created:
+            response.set_cookie(
+                _SESSION_COOKIE_NAME,
+                session_id,
+                httponly=True,
+                samesite="lax",
+                path="/",
+            )
         return session
 
     @app.get("/health")

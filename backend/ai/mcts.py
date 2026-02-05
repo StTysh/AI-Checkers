@@ -3,10 +3,12 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass, field
+from threading import Event
 from typing import Iterable, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
 from .huistic import evaluate_board
+from .cancel import CancelledError, raise_if_cancelled
 
 from core.board import Board
 from core.game import Game
@@ -71,6 +73,7 @@ def select_move(
     progressive_widening: bool = False,
     pw_k: float = 1.5,
     pw_alpha: float = 0.5,
+    cancel_event: Optional[Event] = None,
 ) -> Optional[Tuple[Piece, Move]]:
     """Return the best move found by Monte Carlo Tree Search.
 
@@ -80,6 +83,8 @@ def select_move(
         raise ValueError("Iterations must be positive.")
     if rollout_depth <= 0:
         raise ValueError("Rollout depth must be positive.")
+
+    raise_if_cancelled(cancel_event)
 
     root_board = game.board.copy()
     root_player = root_board.turn
@@ -105,6 +110,7 @@ def select_move(
             progressive_widening,
             pw_k,
             pw_alpha,
+            cancel_event,
         )
         if not stats:
             return None
@@ -126,6 +132,7 @@ def select_move(
             progressive_widening,
             pw_k,
             pw_alpha,
+            cancel_event,
         )
 
     if best_move is None:
@@ -153,16 +160,19 @@ def _search_single(
     progressive_widening: bool,
     pw_k: float,
     pw_alpha: float,
+    cancel_event: Optional[Event],
 ) -> Optional[Move]:
     rng = random.Random(random_seed)
     root = MCTSNode(board=root_board)
     stats: Optional[dict[int, tuple[int, float]]] = {} if use_transposition else None
 
     for _ in range(iterations):
+        raise_if_cancelled(cancel_event)
         node = root
 
         # Selection / Expansion (with optional progressive widening)
         while True:
+            raise_if_cancelled(cancel_event)
             if node.untried_moves and _can_expand(node, progressive_widening, pw_k, pw_alpha):
                 move = rng.choice(node.untried_moves)
                 node.untried_moves.remove(move)
@@ -186,6 +196,7 @@ def _search_single(
             guidance_depth,
             rollout_cutoff_depth,
             leaf_evaluation,
+            cancel_event,
         )
 
         # Backpropagation
@@ -201,7 +212,10 @@ def _search_single(
 
     if not root.children:
         return None
-    best_child = max(root.children, key=lambda child: child.visits)
+    if stats is None:
+        best_child = max(root.children, key=lambda child: child.visits)
+    else:
+        best_child = max(root.children, key=lambda child: _node_stats(child, stats)[0])
     return best_child.move
 
 
@@ -235,15 +249,18 @@ def _parallel_search(
     progressive_widening: bool,
     pw_k: float,
     pw_alpha: float,
+    cancel_event: Optional[Event],
 ) -> dict[Move, int]:
-    workers = max(1, workers)
-    per_worker = max(1, iterations // workers)
+    iterations = max(1, iterations)
+    workers = max(1, min(int(workers), iterations))
+    base = iterations // workers
+    remainder = iterations % workers
 
-    def _worker(seed_offset: int) -> dict[Move, int]:
+    def _worker(seed_offset: int, worker_iterations: int) -> dict[Move, int]:
         move = _search_single(
             root_board,
             root_player,
-            per_worker,
+            worker_iterations,
             rollout_depth,
             exploration_constant,
             None if random_seed is None else random_seed + seed_offset,
@@ -256,16 +273,27 @@ def _parallel_search(
             progressive_widening,
             pw_k,
             pw_alpha,
+            cancel_event,
         )
         return {move: 1} if move else {}
 
     stats: dict[Move, int] = {}
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(_worker, idx) for idx in range(workers)]
-        for future in futures:
-            result = future.result()
-            for move, count in result.items():
-                stats[move] = stats.get(move, 0) + count
+        futures = []
+        for idx in range(workers):
+            worker_iterations = base + (1 if idx < remainder else 0)
+            if worker_iterations <= 0:
+                worker_iterations = 1
+            futures.append(executor.submit(_worker, idx, worker_iterations))
+        try:
+            for future in futures:
+                result = future.result()
+                for move, count in result.items():
+                    stats[move] = stats.get(move, 0) + count
+        except CancelledError:
+            for future in futures:
+                future.cancel()
+            raise
     return stats
 
 
@@ -278,12 +306,14 @@ def _rollout(
     guidance_depth: int,
     rollout_cutoff_depth: Optional[int],
     leaf_evaluation: str,
+    cancel_event: Optional[Event],
 ) -> float:
     current = board
 
     cutoff = rollout_cutoff_depth if rollout_cutoff_depth is not None else rollout_depth
 
     for ply in range(rollout_depth):
+        raise_if_cancelled(cancel_event)
         winner = current.is_game_over()
         if winner is not None:
             return _reward(winner, root_player)

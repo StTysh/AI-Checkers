@@ -52,7 +52,48 @@ class Board:
                 quiet_map[piece] = moves
 
 
-        return capture_map if capture_map else quiet_map
+        if not capture_map:
+            return quiet_map
+
+        if self.boardSize != 8:
+            capture_map = self._filter_majority_captures(capture_map)
+
+        return capture_map
+
+    def _filter_majority_captures(self, capture_map: MoveMap) -> MoveMap:
+        """International draughts: enforce majority capture.
+
+        Keep only capture moves that capture the most pieces. If tied, prefer moves
+        that capture the most kings.
+        """
+        all_moves = [move for moves in capture_map.values() for move in moves]
+        if not all_moves:
+            return capture_map
+
+        max_captures = max(len(move.captures) for move in all_moves)
+        by_capture_count: MoveMap = {}
+        for piece, moves in capture_map.items():
+            filtered = [move for move in moves if len(move.captures) == max_captures]
+            if filtered:
+                by_capture_count[piece] = filtered
+        if not by_capture_count:
+            return capture_map
+
+        def kings_captured(move: Move) -> int:
+            total = 0
+            for row, col in move.captures:
+                captured = self.getPiece(row, col)
+                if captured is not None and captured.is_king:
+                    total += 1
+            return total
+
+        max_kings = max(kings_captured(move) for moves in by_capture_count.values() for move in moves)
+        majority: MoveMap = {}
+        for piece, moves in by_capture_count.items():
+            filtered = [move for move in moves if kings_captured(move) == max_kings]
+            if filtered:
+                majority[piece] = filtered
+        return majority if majority else by_capture_count
 
 
     def movePiece(self, piece: Piece, move: Move) -> list[Piece]:
