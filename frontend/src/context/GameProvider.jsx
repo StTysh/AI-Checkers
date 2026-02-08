@@ -38,6 +38,7 @@ const useGameStore = create(
     gameReady: false,
     systemInfo: null,
     manualAiApproval: false,
+    flipBoard: false,
     setBoardState: payload =>
       set(state => {
         state.boardState = payload;
@@ -80,9 +81,17 @@ const useGameStore = create(
           enforcePvaiPairing(state, color);
         }
       }),
+    swapPlayerConfigs: () =>
+      set(state => {
+        const prevWhite = state.playerConfig.white;
+        const prevBlack = state.playerConfig.black;
+        state.playerConfig.white = prevBlack;
+        state.playerConfig.black = prevWhite;
+      }),
     setShowHints: flag => set({ showHints: flag }),
     setShowCoordinates: flag => set({ showCoordinates: flag }),
     setManualAiApproval: flag => set({ manualAiApproval: flag }),
+    setFlipBoard: flag => set({ flipBoard: flag }),
     setGameReady: flag => set({ gameReady: flag }),
     setSystemInfo: info => set({ systemInfo: info }),
     setLastMove: move => set({ lastMove: move }),

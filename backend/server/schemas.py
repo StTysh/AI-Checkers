@@ -58,6 +58,8 @@ class AIConfigFields(BaseModel):
     progressiveWidening: Optional[bool] = None
     pwK: Optional[float] = Field(default=None, ge=0.1, le=10.0)
     pwAlpha: Optional[float] = Field(default=None, ge=0.1, le=1.0)
+    progressiveBias: Optional[bool] = None
+    pbWeight: Optional[float] = Field(default=None, ge=0.0, le=10.0)
 
 
 class PlayerConfigPayload(AIConfigFields):

@@ -15,7 +15,9 @@ const Square = ({ row, col, selectedCell, highlightLookup, selectCell }) => {
         position: "relative",
         cursor: "pointer",
         backgroundColor: isLight ? "#f1d4a1" : "#6c452b",
-        "&.selected": { outline: "3px solid #f9a826" },
+        // Use an inset shadow instead of `outline` so the highlight isn't painted underneath
+        // neighboring squares in the grid (outline extends outside the box).
+        "&.selected": { boxShadow: "inset 0 0 0 3px #f9a826" },
         "&.highlight::after": {
           content: '""',
           position: "absolute",

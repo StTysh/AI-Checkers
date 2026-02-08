@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Box,
   Card,
   CardHeader,
   CardContent,
@@ -130,6 +131,7 @@ const PlayerConfigCard = ({ color }) => {
   };
 
   const pendingMove = boardState?.pendingAiMoves?.[color];
+  const isOnTurn = Boolean(boardState && !boardState.winner && boardState.turn === color);
   const showPerformButton =
     manualAiApproval &&
     gameMode !== "pvp" &&
@@ -155,7 +157,25 @@ const PlayerConfigCard = ({ color }) => {
 
   return (
     <Card>
-      <CardHeader title={`${label} Player`} subheader="Configure controller / AI options" />
+      <CardHeader
+        title={
+          <Box display="flex" alignItems="center" gap={1}>
+            <Box
+              sx={{
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                backgroundColor: isOnTurn ? "#f9a826" : "transparent",
+                boxShadow: isOnTurn ? "0 0 0 3px rgba(249,168,38,0.15)" : "none",
+                border: "1px solid rgba(249,168,38,0.5)",
+                flex: "0 0 auto",
+              }}
+            />
+            <Box component="span">{label} Player</Box>
+          </Box>
+        }
+        subheader="Configure controller / AI options"
+      />
       <CardContent>
         <FormControl fullWidth size="small">
           <InputLabel>Player Type</InputLabel>
@@ -280,6 +300,11 @@ const PlayerConfigCard = ({ color }) => {
                       {...numberFieldHandlers("timeLimitMs")}
                       inputProps={{ step: 50, min: 10, max: 60000 }}
                       fullWidth
+                      helperText={
+                        config.iterativeDeepening
+                          ? "Time budget for Iterative Deepening search."
+                          : "Enable Iterative Deepening to use a time limit."
+                      }
                       disabled={configLocked || !config.iterativeDeepening}
                       sx={{ mt: 2 }}
                     />
@@ -500,7 +525,7 @@ const PlayerConfigCard = ({ color }) => {
                   value={config.iterations}
                   {...sliderHandlers("iterations")}
                   min={50}
-                  max={5000}
+                  max={20000}
                   step={50}
                   valueLabelDisplay="auto"
                   disabled={configLocked}
@@ -532,43 +557,63 @@ const PlayerConfigCard = ({ color }) => {
                         fullWidth
                         disabled={configLocked}
                       />
-                      <FormGroup>
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={config.mctsParallel}
-                              onChange={event => {
-                                const enabled = event.target.checked;
-                                adjustParallelWorkers("mctsWorkers", "mctsParallel", config.mctsWorkers, true, { mctsParallel: enabled });
-                              }}
-                              disabled={configLocked}
-                            />
-                          }
-                          label="Enable Parallel MCTS"
+                        <FormGroup>
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={config.mctsParallel}
+                                onChange={event => {
+                                  const enabled = event.target.checked;
+                                  adjustParallelWorkers("mctsWorkers", "mctsParallel", config.mctsWorkers, true, { mctsParallel: enabled });
+                                }}
+                                disabled={configLocked}
+                              />
+                            }
+                            label="Enable Parallel MCTS"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={config.mctsTransposition}
+                                onChange={event => syncConfig({ mctsTransposition: event.target.checked })}
+                                disabled={configLocked}
+                              />
+                            }
+                            label="Enable MCTS Transposition"
+                          />
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={config.progressiveBias}
+                                onChange={event => syncConfig({ progressiveBias: event.target.checked })}
+                                disabled={configLocked}
+                              />
+                            }
+                            label="Enable Progressive Bias"
+                          />
+                        </FormGroup>
+                        <TextField
+                          label="Progressive bias weight"
+                          type="number"
+                          size="small"
+                          value={config.pbWeight}
+                          {...numberFieldHandlers("pbWeight")}
+                          inputProps={{ step: 0.05, min: 0, max: 10 }}
+                          fullWidth
+                          disabled={configLocked || !config.progressiveBias}
                         />
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={config.mctsTransposition}
-                              onChange={event => syncConfig({ mctsTransposition: event.target.checked })}
-                              disabled={configLocked}
-                            />
-                          }
-                          label="Enable MCTS Transposition"
+                        <Typography variant="body2">Workers</Typography>
+                        <Slider
+                          value={config.mctsWorkers}
+                          onChange={(_, val) => adjustParallelWorkers("mctsWorkers", "mctsParallel", val, false)}
+                          onChangeCommitted={(_, val) => adjustParallelWorkers("mctsWorkers", "mctsParallel", val, true)}
+                          min={1}
+                          max={globalMaxWorkers}
+                          step={1}
+                          valueLabelDisplay="auto"
+                          marks
+                          disabled={configLocked || !config.mctsParallel}
                         />
-                      </FormGroup>
-                      <Typography variant="body2">Workers</Typography>
-                      <Slider
-                        value={config.mctsWorkers}
-                        onChange={(_, val) => adjustParallelWorkers("mctsWorkers", "mctsParallel", val, false)}
-                        onChangeCommitted={(_, val) => adjustParallelWorkers("mctsWorkers", "mctsParallel", val, true)}
-                        min={1}
-                        max={globalMaxWorkers}
-                        step={1}
-                        valueLabelDisplay="auto"
-                        marks
-                        disabled={configLocked || !config.mctsParallel}
-                      />
                       <TextField
                         label="Transposition max entries"
                         type="number"

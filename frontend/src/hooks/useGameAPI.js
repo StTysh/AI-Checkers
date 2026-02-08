@@ -47,6 +47,8 @@ const MCTS_PAYLOAD_KEYS = [
   "progressiveWidening",
   "pwK",
   "pwAlpha",
+  "progressiveBias",
+  "pbWeight",
 ];
 
 const assignPayloadKeys = (target, source, keys) => {

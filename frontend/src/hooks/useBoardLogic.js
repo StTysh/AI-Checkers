@@ -8,6 +8,7 @@ export const useBoardLogic = () => {
   const highlightStore = store(state => state.highlightMoves);
   const showHints = store(state => state.showHints);
   const showCoordinates = store(state => state.showCoordinates);
+  const flipBoard = store(state => state.flipBoard);
   const gameReady = store(state => state.gameReady);
   const setSelectedCell = store(state => state.setSelectedCell);
   const setHighlightMoves = store(state => state.setHighlightMoves);
@@ -100,5 +101,6 @@ export const useBoardLogic = () => {
     selectCell,
     highlightLookup,
     showCoordinates,
+    flipBoard,
   };
 };

@@ -48,7 +48,7 @@ const DEFAULTS = {
   fairnessLock: false,
   sweepMode: false,
   sweepParam: "timeLimitMs",
-  sweepValues: "1000,2000,5000",
+  sweepValues: "1000,2000,5000,10000,20000",
   sweepSide: "white",
 };
 

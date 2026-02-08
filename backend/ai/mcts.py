@@ -26,6 +26,7 @@ class MCTSNode:
     value: float = 0.0
     untried_moves: Optional[list[Move]] = None
     board_hash: int = 0
+    bias: float = 0.0
 
     def is_fully_expanded(self) -> bool:
         return self.untried_moves is not None and not self.untried_moves
@@ -34,6 +35,9 @@ class MCTSNode:
         self,
         exploration_constant: float,
         stats: Optional[dict[int, tuple[int, float]]] = None,
+        *,
+        progressive_bias: bool = False,
+        pb_weight: float = 0.0,
     ) -> "MCTSNode":
         parent_visits, _ = _node_stats(self, stats)
         parent_visits = max(1, parent_visits)
@@ -44,6 +48,8 @@ class MCTSNode:
                 return math.inf
             exploit = value / visits
             explore = exploration_constant * math.sqrt(math.log(parent_visits) / visits)
+            if progressive_bias and pb_weight > 0.0:
+                return exploit + explore + (pb_weight * child.bias) / (1.0 + visits)
             return exploit + explore
 
         return max(self.children, key=ucb)
@@ -65,6 +71,8 @@ def _mcts_process_worker(
     progressive_widening: bool,
     pw_k: float,
     pw_alpha: float,
+    progressive_bias: bool,
+    pb_weight: float,
     moves_cache_max_entries: int,
 ) -> Optional[Move]:
     board = Board.from_state(root_state)
@@ -85,6 +93,8 @@ def _mcts_process_worker(
         progressive_widening,
         pw_k,
         pw_alpha,
+        progressive_bias,
+        pb_weight,
         None,
     )
 
@@ -107,6 +117,8 @@ def select_move(
     progressive_widening: bool = False,
     pw_k: float = 1.5,
     pw_alpha: float = 0.5,
+    progressive_bias: bool = False,
+    pb_weight: float = 0.0,
     cancel_event: Optional[Event] = None,
 ) -> Optional[Tuple[Piece, Move]]:
     """Return the best move found by Monte Carlo Tree Search.
@@ -146,6 +158,8 @@ def select_move(
             progressive_widening,
             pw_k,
             pw_alpha,
+            progressive_bias,
+            pb_weight,
             cancel_event,
         )
         if not stats:
@@ -168,6 +182,8 @@ def select_move(
             progressive_widening,
             pw_k,
             pw_alpha,
+            progressive_bias,
+            pb_weight,
             cancel_event,
         )
 
@@ -196,6 +212,8 @@ def _search_single(
     progressive_widening: bool,
     pw_k: float,
     pw_alpha: float,
+    progressive_bias: bool,
+    pb_weight: float,
     cancel_event: Optional[Event],
 ) -> Optional[Move]:
     rng = random.Random(random_seed)
@@ -222,16 +240,22 @@ def _search_single(
                     piece = board.getPiece(*move.start)
                     if piece is None:
                         break
+                    bias = _progressive_bias(piece, move, board.boardSize) if progressive_bias else 0.0
                     undo = board.make_move(piece, move)
                     path_undos.append(undo)
 
-                    child = MCTSNode(parent=node, move=move, board_hash=board.compute_hash())
+                    child = MCTSNode(parent=node, move=move, board_hash=board.compute_hash(), bias=bias)
                     node.children.append(child)
                     node = child
                     break
 
                 if node.children:
-                    node = node.best_child(exploration_constant, stats)
+                    node = node.best_child(
+                        exploration_constant,
+                        stats,
+                        progressive_bias=progressive_bias,
+                        pb_weight=pb_weight,
+                    )
                     if node.move is None:
                         break
                     piece = board.getPiece(*node.move.start)
@@ -310,6 +334,8 @@ def _parallel_search(
     progressive_widening: bool,
     pw_k: float,
     pw_alpha: float,
+    progressive_bias: bool,
+    pb_weight: float,
     cancel_event: Optional[Event],
 ) -> dict[Move, int]:
     iterations = max(1, iterations)
@@ -354,6 +380,8 @@ def _parallel_search(
                         progressive_widening,
                         pw_k,
                         pw_alpha,
+                        progressive_bias,
+                        pb_weight,
                         2048,
                     ),
                 )
@@ -517,11 +545,11 @@ def _minimax_eval(board: Board, maximizing_color: Color, depth: int, cancel_even
         return 1.0 if winner == maximizing_color else -1.0
 
     if depth <= 0:
-        return _normalize_eval(evaluate_board(board, maximizing_color))
+        return _normalize_eval(evaluate_board(board, maximizing_color), board.boardSize)
 
     moves_map = board.getAllValidMoves(board.turn)
     if not moves_map:
-        return _normalize_eval(evaluate_board(board, maximizing_color))
+        return _normalize_eval(evaluate_board(board, maximizing_color), board.boardSize)
 
     if board.turn == maximizing_color:
         value = -math.inf
@@ -553,14 +581,23 @@ def _minimax_eval(board: Board, maximizing_color: Color, depth: int, cancel_even
 
 def _leaf_value(board: Board, root_player: Color, guidance_depth: int, leaf_evaluation: str, cancel_event: Optional[Event]) -> float:
     if leaf_evaluation == "heuristic_eval":
-        return _normalize_eval(evaluate_board(board, root_player))
+        return _normalize_eval(evaluate_board(board, root_player), board.boardSize)
     if leaf_evaluation == "minimax_eval":
         return _minimax_eval(board, root_player, guidance_depth, cancel_event)
     return 0.0
 
 
-def _normalize_eval(score: float) -> float:
-    return max(-1.0, min(1.0, score / 1000.0))
+def _normalize_eval(score: float, board_size: int) -> float:
+    """Map heuristic scores (in 'man=1.0' units) into [-1, 1] for MCTS.
+
+    The heuristic values are usually single-digit to low double-digit. Dividing by
+    1000 makes them irrelevant compared to terminal rewards (+/-1). We instead use
+    a smooth saturation with a board-size dependent scale so that:
+      - ~1 man advantage gives a small-but-meaningful bias
+      - large advantages saturate towards +/-1 without exploding
+    """
+    scale = 6.0 if board_size == 8 else 10.0
+    return math.tanh(score / scale)
 
 
 def _collect_moves(moves_map: dict[Piece, Iterable[Move]]) -> list[Move]:
@@ -578,6 +615,17 @@ def _pop_random_move(moves: list[Move], rng: random.Random) -> Move:
     idx = rng.randrange(len(moves))
     moves[idx], moves[-1] = moves[-1], moves[idx]
     return moves.pop()
+
+def _progressive_bias(piece: Piece, move: Move, board_size: int) -> float:
+    score = 0.0
+    if move.is_capture:
+        score += 1.0 + 0.15 * len(move.captures)
+    if not piece.is_king:
+        end_row, _ = move.end
+        last_row = 0 if piece.color == Color.WHITE else board_size - 1
+        if end_row == last_row:
+            score += 0.75
+    return score
 
 
 def _is_promotion_move(board: Board, move: Move) -> bool:

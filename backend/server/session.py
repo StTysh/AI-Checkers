@@ -78,6 +78,8 @@ def _default_player_settings() -> dict[str, Any]:
         "progressiveWidening": False,
         "pwK": 1.5,
         "pwAlpha": 0.5,
+        "progressiveBias": False,
+        "pbWeight": 0.4,
     }
 
 
@@ -329,6 +331,10 @@ class GameSession:
                 overrides["pwK"] = payload.pwK
             if payload.pwAlpha is not None:
                 overrides["pwAlpha"] = payload.pwAlpha
+            if payload.progressiveBias is not None:
+                overrides["progressiveBias"] = payload.progressiveBias
+            if payload.pbWeight is not None:
+                overrides["pbWeight"] = payload.pbWeight
 
             controller = self._controller_from_settings(color, overrides)
             self.game.setPlayer(color, controller)
@@ -623,6 +629,8 @@ class GameSession:
                 progressive_widening=bool(settings.get("progressiveWidening")),
                 pw_k=float(settings.get("pwK") or 1.5),
                 pw_alpha=float(settings.get("pwAlpha") or 0.5),
+                progressive_bias=bool(settings.get("progressiveBias")),
+                pb_weight=float(settings.get("pbWeight") or 0.0),
             )
         raise ValueError(f"Player type '{player_type}' not implemented yet.")
 

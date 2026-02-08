@@ -35,21 +35,37 @@ const GamePage = () => {
     api.fetchSystemInfo().then(setSystemInfo).catch(() => {});
   }, [api, setSystemInfo]);
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
+    <Container maxWidth="xl" sx={{ py: { xs: 2, md: 4 } }}>
       <Header />
-      <Grid container spacing={6} mt={1}>
-        <Grid item xs={12} lg={6} sx={{ flexBasis: { lg: "46%" }, maxWidth: { lg: "46%" } }}>
-          <Box sx={{ width: "115%", maxWidth: "115%", ml: "-15%", mt: 2 }}>
+      <Grid
+        container
+        columnSpacing={{ xs: 3, md: 6 }}
+        rowSpacing={{ xs: 3, md: 6 }}
+        mt={{ xs: 0, md: 1 }}
+        alignItems="flex-start"
+      >
+        <Grid item xs={12} lg={5} sx={{ minWidth: 0 }}>
+          <Box
+            sx={{
+              mt: { xs: 0, lg: 2 },
+              mx: "auto",
+              width: "100%",
+              maxWidth: {
+                xs: "min(100%, 560px)",
+                sm: "min(100%, 620px)",
+                md: "min(100%, 680px)",
+                lg: "min(100%, calc(100vh - 240px))",
+              },
+            }}
+          >
             <Board />
           </Box>
         </Grid>
         <Grid
           item
           xs={12}
-          lg={6}
+          lg={7}
           sx={{
-            flexBasis: { lg: "54%" },
-            maxWidth: { lg: "54%" },
             minWidth: 0,
             overflowX: "hidden",
           }}

@@ -19,6 +19,7 @@ import {
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import UndoIcon from "@mui/icons-material/Undo";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import { GAME_MODES, VARIANTS } from "../../utils/constants";
 import { useGameContext } from "../../context/GameProvider";
 
@@ -32,17 +33,21 @@ const GameSetupCard = () => {
   const showHints = store(state => state.showHints);
   const showCoordinates = store(state => state.showCoordinates);
   const manualAiApproval = store(state => state.manualAiApproval);
+  const flipBoard = store(state => state.flipBoard);
   const setGameMode = store(state => state.setGameMode);
   const setGameReady = store(state => state.setGameReady);
   const setVariant = store(state => state.setVariant);
   const setShowHints = store(state => state.setShowHints);
   const setShowCoordinates = store(state => state.setShowCoordinates);
   const setManualAiApproval = store(state => state.setManualAiApproval);
+  const setFlipBoard = store(state => state.setFlipBoard);
+  const swapPlayerConfigs = store(state => state.swapPlayerConfigs);
 
   const [updatingMode, setUpdatingMode] = useState(false);
   const [starting, setStarting] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [undoing, setUndoing] = useState(false);
+  const [swappingPlayers, setSwappingPlayers] = useState(false);
 
   const handleModeChange = async event => {
     if (updatingMode) return;
@@ -97,6 +102,19 @@ const GameSetupCard = () => {
     }
   };
 
+  const handleSwapPlayers = async () => {
+    if (swappingPlayers) return;
+    setSwappingPlayers(true);
+    try {
+      swapPlayerConfigs();
+      const latestConfig = store.getState().playerConfig;
+      await api.configurePlayers(latestConfig);
+      await api.runAITurns();
+    } finally {
+      setSwappingPlayers(false);
+    }
+  };
+
   return (
     <Card>
       <CardHeader title="Game Setup" />
@@ -147,6 +165,14 @@ const GameSetupCard = () => {
               }}
             />
             <FormControlLabel
+              control={<Switch checked={flipBoard} onChange={event => setFlipBoard(event.target.checked)} />}
+              label="Flip board"
+              sx={{
+                mr: 0,
+                ".MuiFormControlLabel-label": { whiteSpace: "nowrap" },
+              }}
+            />
+            <FormControlLabel
               control={
                 <Switch
                   checked={manualAiApproval}
@@ -188,6 +214,14 @@ const GameSetupCard = () => {
                 Restart
               </Button>
             </ButtonGroup>
+            <Button
+              fullWidth
+              startIcon={<SwapHorizIcon />}
+              onClick={handleSwapPlayers}
+              disabled={!boardState || swappingPlayers}
+            >
+              Swap White/Black players
+            </Button>
             <Button
               fullWidth
               startIcon={<UndoIcon />}

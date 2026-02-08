@@ -119,6 +119,8 @@ def create_mcts_controller(
     progressive_widening: bool = False,
     pw_k: float = 1.5,
     pw_alpha: float = 0.5,
+    progressive_bias: bool = False,
+    pb_weight: float = 0.0,
 ) -> PlayerController:
     iterations = max(1, iterations)
     rollout_depth = max(1, rollout_depth)
@@ -142,6 +144,8 @@ def create_mcts_controller(
             progressive_widening=progressive_widening,
             pw_k=pw_k,
             pw_alpha=pw_alpha,
+            progressive_bias=progressive_bias,
+            pb_weight=pb_weight,
             cancel_event=cancel_event,
         )
 
@@ -154,6 +158,8 @@ def create_mcts_controller(
         suffix += f", cutoff={rollout_cutoff_depth}"
     if leaf_evaluation != "random_terminal":
         suffix += f", leaf={leaf_evaluation}"
+    if progressive_bias:
+        suffix += f", pb={pb_weight:.2f}"
     if random_seed is not None:
         suffix += f", seed={random_seed}"
 

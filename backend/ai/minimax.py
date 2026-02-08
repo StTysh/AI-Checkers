@@ -214,7 +214,7 @@ def select_move(
 		return None
 
 	deadline = None
-	if time_limit_ms > 0:
+	if use_iterative_deepening and time_limit_ms > 0:
 		deadline = time.perf_counter() + (time_limit_ms / 1000.0)
 
 	best_choice: Optional[Tuple[Piece, Move]] = None

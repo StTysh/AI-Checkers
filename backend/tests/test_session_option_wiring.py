@@ -142,6 +142,8 @@ class SessionOptionWiringTests(unittest.TestCase):
                     progressiveWidening=True,
                     pwK=1.8,
                     pwAlpha=0.55,
+                    progressiveBias=True,
+                    pbWeight=0.9,
                 )
             )
             _ = session.configure_players(payload)
@@ -162,6 +164,8 @@ class SessionOptionWiringTests(unittest.TestCase):
         self.assertEqual(captured["progressive_widening"], True)
         self.assertEqual(captured["pw_k"], 1.8)
         self.assertEqual(captured["pw_alpha"], 0.55)
+        self.assertEqual(captured["progressive_bias"], True)
+        self.assertEqual(captured["pb_weight"], 0.9)
 
     def test_reset_and_variant_cancel_inflight_ai(self) -> None:
         started = threading.Event()

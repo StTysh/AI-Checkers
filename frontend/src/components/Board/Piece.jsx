@@ -1,7 +1,7 @@
 import { Box } from "@mui/material";
 import { memo, useLayoutEffect, useMemo, useRef } from "react";
 
-const Piece = ({ piece, boardSize, lastMove }) => {
+const Piece = ({ piece, boardSize, lastMove, flipped = false }) => {
   const cellPercent = useMemo(() => 100 / boardSize, [boardSize]);
   const scale = 0.78;
   const size = cellPercent * scale;
@@ -9,10 +9,14 @@ const Piece = ({ piece, boardSize, lastMove }) => {
   const ref = useRef(null);
   const animationRef = useRef({ timeouts: [] });
 
-  const computePosition = (row, col) => ({
-    top: `${row * cellPercent + offset}%`,
-    left: `${col * cellPercent + offset}%`,
-  });
+  const computePosition = (row, col) => {
+    const displayRow = flipped ? boardSize - 1 - row : row;
+    const displayCol = flipped ? boardSize - 1 - col : col;
+    return {
+      top: `${displayRow * cellPercent + offset}%`,
+      left: `${displayCol * cellPercent + offset}%`,
+    };
+  };
 
   useLayoutEffect(() => {
     const node = ref.current;
@@ -67,7 +71,7 @@ const Piece = ({ piece, boardSize, lastMove }) => {
       cancelAnimationFrame(frame);
       cleanup();
     };
-  }, [cellPercent, offset, lastMove, piece.previousCol, piece.previousRow, piece.col, piece.row]);
+  }, [boardSize, cellPercent, flipped, offset, lastMove, piece.previousCol, piece.previousRow, piece.col, piece.row]);
 
   return (
     <Box
@@ -78,8 +82,8 @@ const Piece = ({ piece, boardSize, lastMove }) => {
         width: `${size}%`,
         height: `${size}%`,
         borderRadius: "50%",
-        top: `${piece.row * cellPercent + offset}%`,
-        left: `${piece.col * cellPercent + offset}%`,
+        top: computePosition(piece.row, piece.col).top,
+        left: computePosition(piece.row, piece.col).left,
         background: piece.color === "white" ? "#f4f6fb" : "#1a1a1f",
         border: "3px solid rgba(0,0,0,0.35)",
         display: "grid",
@@ -98,6 +102,7 @@ const Piece = ({ piece, boardSize, lastMove }) => {
 const areEqual = (prev, next) => {
   if (prev.boardSize !== next.boardSize) return false;
   if (prev.lastMove !== next.lastMove) return false;
+  if (prev.flipped !== next.flipped) return false;
   const a = prev.piece;
   const b = next.piece;
   return (

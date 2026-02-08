@@ -59,6 +59,8 @@ const BASE_PLAYER_CONFIG = {
   progressiveWidening: false,
   pwK: 1.5,
   pwAlpha: 0.5,
+  progressiveBias: false,
+  pbWeight: 0.4,
 };
 
 export const DEFAULT_PLAYER_CONFIG = {
