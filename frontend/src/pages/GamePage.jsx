@@ -1,13 +1,14 @@
-import { Box, Container, Grid, Tabs, Tab } from "@mui/material";
+import { Box, Container, Grid, LinearProgress, Tabs, Tab } from "@mui/material";
 import Header from "../components/UI/Header";
 import Footer from "../components/UI/Footer";
 import Board from "../components/Board/Board";
 import PlayerConfigCard from "../components/Controls/PlayerConfigCard";
 import GameSetupCard from "../components/Controls/GameSetupCard";
-import EvaluationPanel from "../components/Controls/EvaluationPanel";
 import GameOverDialog from "../components/Dialogs/GameOverDialog";
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useGameContext } from "../context/GameProvider";
+
+const EvaluationPanel = lazy(() => import("../components/Controls/EvaluationPanel"));
 
 const TabPanel = ({ value, index, children }) => {
   if (value !== index) return null;
@@ -32,7 +33,9 @@ const GamePage = () => {
   }, [evaluationEnabled, tab]);
 
   useEffect(() => {
-    api.fetchSystemInfo().then(setSystemInfo).catch(() => {});
+    api.fetchSystemInfo().then(setSystemInfo).catch(error => {
+      console.error("Failed to fetch system info", error);
+    });
   }, [api, setSystemInfo]);
   return (
     <Container maxWidth="xl" sx={{ py: { xs: 2, md: 4 } }}>
@@ -89,7 +92,9 @@ const GamePage = () => {
               </Box>
             </TabPanel>
             <TabPanel value={tab} index={1}>
-              <EvaluationPanel />
+              <Suspense fallback={<LinearProgress />}>
+                <EvaluationPanel isEvaluateTabActive={tab === 1} />
+              </Suspense>
             </TabPanel>
           </Box>
         </Grid>

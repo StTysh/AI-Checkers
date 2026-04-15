@@ -1,0 +1,51 @@
+{
+  "defaults": {
+    "variant": "british",
+    "games": 200,
+    "moveCap": 300,
+    "startPolicy": "alternate",
+    "drawPolicy": "half",
+    "randomizeOpening": false,
+    "randomizePlies": 0
+  },
+  "experiments": [
+    {
+      "name": "minimax-depth-6-vs-mcts-5000",
+      "maxDurationHours": 0.25,
+      "white": {
+        "type": "minimax",
+        "depth": 6,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "timeLimitMs": 1000
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 5000,
+        "rolloutDepth": 80,
+        "rolloutPolicy": "heuristic",
+        "leafEvaluation": "heuristic_eval"
+      }
+    },
+    {
+      "name": "minimax-depth-7-vs-mcts-5000",
+      "maxDurationHours": 0.25,
+      "white": {
+        "type": "minimax",
+        "depth": 7,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "timeLimitMs": 1000
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 5000,
+        "rolloutDepth": 80,
+        "rolloutPolicy": "heuristic",
+        "leafEvaluation": "heuristic_eval"
+      }
+    }
+  ]
+}

@@ -30,6 +30,7 @@ const GameSetupCard = () => {
   const playerConfig = store(state => state.playerConfig);
   const gameMode = store(state => state.gameMode);
   const variant = store(state => state.variant);
+  const gameReady = store(state => state.gameReady);
   const showHints = store(state => state.showHints);
   const showCoordinates = store(state => state.showCoordinates);
   const manualAiApproval = store(state => state.manualAiApproval);
@@ -37,6 +38,7 @@ const GameSetupCard = () => {
   const setGameMode = store(state => state.setGameMode);
   const setGameReady = store(state => state.setGameReady);
   const setVariant = store(state => state.setVariant);
+  const setPlayerConfig = store(state => state.setPlayerConfig);
   const setShowHints = store(state => state.setShowHints);
   const setShowCoordinates = store(state => state.setShowCoordinates);
   const setManualAiApproval = store(state => state.setManualAiApproval);
@@ -49,16 +51,34 @@ const GameSetupCard = () => {
   const [undoing, setUndoing] = useState(false);
   const [swappingPlayers, setSwappingPlayers] = useState(false);
 
+  const clonePlayerConfig = config => JSON.parse(JSON.stringify(config));
+
+  const restorePlayerConfig = snapshot => {
+    setPlayerConfig(snapshot);
+  };
+
   const handleModeChange = async event => {
     if (updatingMode) return;
     const value = event.target.value;
+    const previousState = {
+      gameMode,
+      gameReady,
+      playerConfig: clonePlayerConfig(store.getState().playerConfig),
+    };
     setUpdatingMode(true);
     try {
       setGameMode(value);
-      setGameReady(false);
-      const latestConfig = store.getState().playerConfig;
-      await api.configurePlayers(latestConfig);
+      await api.configurePlayers(store.getState().playerConfig);
       await api.resetGame({ variant });
+    } catch {
+      try {
+        await api.configurePlayers(previousState.playerConfig);
+      } catch {
+        // The frontend state still rolls back below; the API error has already been surfaced.
+      }
+      setGameMode(previousState.gameMode);
+      restorePlayerConfig(previousState.playerConfig);
+      setGameReady(previousState.gameReady);
     } finally {
       setUpdatingMode(false);
     }
@@ -66,8 +86,13 @@ const GameSetupCard = () => {
 
   const handleVariantChange = async event => {
     const value = event.target.value;
+    const previousVariant = variant;
     setVariant(value);
-    await api.changeVariant(value);
+    try {
+      await api.changeVariant(value);
+    } catch {
+      setVariant(previousVariant);
+    }
   };
 
   const handleStart = async () => {
@@ -85,8 +110,8 @@ const GameSetupCard = () => {
   const handleReset = async () => {
     setResetting(true);
     try {
-      setGameReady(false);
       await api.resetGame({ variant });
+      setGameReady(false);
     } finally {
       setResetting(false);
     }
@@ -104,12 +129,19 @@ const GameSetupCard = () => {
 
   const handleSwapPlayers = async () => {
     if (swappingPlayers) return;
+    const previousPlayerConfig = clonePlayerConfig(store.getState().playerConfig);
     setSwappingPlayers(true);
     try {
       swapPlayerConfigs();
-      const latestConfig = store.getState().playerConfig;
-      await api.configurePlayers(latestConfig);
+      await api.configurePlayers(store.getState().playerConfig);
       await api.runAITurns();
+    } catch {
+      restorePlayerConfig(previousPlayerConfig);
+      try {
+        await api.configurePlayers(previousPlayerConfig);
+      } catch {
+        // Local rollback is the important part for preserving UI/backend alignment.
+      }
     } finally {
       setSwappingPlayers(false);
     }

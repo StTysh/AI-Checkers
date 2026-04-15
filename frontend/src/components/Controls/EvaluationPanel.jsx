@@ -41,7 +41,6 @@ const DEFAULTS = {
   randomSeed: "",
   randomizeOpening: false,
   randomizePlies: 2,
-  resetAfterRun: false,
   experimentName: "",
   notes: "",
   drawPolicy: "half",
@@ -73,17 +72,14 @@ const createPresetId = () => {
   return `preset-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const EvaluationPanel = () => {
+const EvaluationPanel = ({ isEvaluateTabActive }) => {
   const { store, api } = useGameContext();
-  const playerConfig = store(state => state.playerConfig);
-
-  const [variant, setVariant] = useState(store.getState().variant);
+  const [variant, setVariant] = useState(() => store.getState().variant);
   const [games, setGames] = useState(DEFAULTS.games);
   const [startPolicy, setStartPolicy] = useState(DEFAULTS.startPolicy);
   const [randomSeed, setRandomSeed] = useState(DEFAULTS.randomSeed);
   const [randomizeOpening, setRandomizeOpening] = useState(DEFAULTS.randomizeOpening);
   const [randomizePlies, setRandomizePlies] = useState(DEFAULTS.randomizePlies);
-  const [resetAfterRun, setResetAfterRun] = useState(DEFAULTS.resetAfterRun);
   const [experimentName, setExperimentName] = useState(DEFAULTS.experimentName);
   const [notes, setNotes] = useState(DEFAULTS.notes);
   const [drawPolicy, setDrawPolicy] = useState(DEFAULTS.drawPolicy);
@@ -98,19 +94,29 @@ const EvaluationPanel = () => {
   const [showAllDiff, setShowAllDiff] = useState(false);
   const [copied, setCopied] = useState(false);
   const [sweepRunning, setSweepRunning] = useState(false);
-  const [sweepStopRequested, setSweepStopRequested] = useState(false);
   const [sweepResults, setSweepResults] = useState([]);
   const [sweepStatus, setSweepStatus] = useState(null);
 
   const [evaluationId, setEvaluationId] = useState(null);
   const [status, setStatus] = useState(null);
   const [running, setRunning] = useState(false);
-  const pollRef = useRef(null);
+  const [snapshotConfig, setSnapshotConfig] = useState(() => {
+    const { playerConfig } = store.getState();
+    return {
+      white: { ...playerConfig.white },
+      black: { ...playerConfig.black },
+    };
+  });
 
-  const [snapshotConfig, setSnapshotConfig] = useState(() => ({
-    white: playerConfig.white,
-    black: playerConfig.black,
-  }));
+  const activeEvaluationIdRef = useRef(null);
+  const activeEvaluationSnapshotRef = useRef(null);
+  const lastEvaluationSnapshotRef = useRef(null);
+  const sweepStopRequestedRef = useRef(false);
+  const pollTokenRef = useRef(0);
+  const pollTimeoutRef = useRef(null);
+  const wasEvaluateTabActiveRef = useRef(false);
+  const runningRef = useRef(false);
+  const sweepRunningRef = useRef(false);
 
   const numberSetter = setter => event => setter(Number(event.target.value));
 
@@ -139,7 +145,6 @@ const EvaluationPanel = () => {
     setRandomSeed(DEFAULTS.randomSeed);
     setRandomizeOpening(DEFAULTS.randomizeOpening);
     setRandomizePlies(DEFAULTS.randomizePlies);
-    setResetAfterRun(DEFAULTS.resetAfterRun);
     setExperimentName(DEFAULTS.experimentName);
     setNotes(DEFAULTS.notes);
     setDrawPolicy(DEFAULTS.drawPolicy);
@@ -150,78 +155,22 @@ const EvaluationPanel = () => {
     setSweepSide(DEFAULTS.sweepSide);
   };
 
-  const describeConfig = config => {
-    if (config.type === "minimax") {
-      return `Minimax d=${config.depth}, id=${config.iterativeDeepening ? "on" : "off"}, t=${config.timeLimitMs}ms, p=${config.parallel ? config.workers : 1}`;
-    }
-    if (config.type === "mcts") {
-      return `MCTS iter=${config.iterations}, depth=${config.rolloutDepth}, policy=${config.rolloutPolicy}`;
-    }
-    return "Human";
+  const syncDraftFromPlayState = () => {
+    const { variant: liveVariant, playerConfig: livePlayerConfig } = store.getState();
+    setVariant(liveVariant);
+    setSnapshotConfig({
+      white: { ...livePlayerConfig.white },
+      black: { ...livePlayerConfig.black },
+    });
   };
 
-  const buildConfigRows = useMemo(() => {
-    const white = snapshotConfig.white;
-    const black = snapshotConfig.black;
-    const fields = [];
-    const pushField = (key, label) => fields.push({ key, label });
-    pushField("type", "Algorithm");
-    if (white.type === "minimax" || black.type === "minimax") {
-      pushField("depth", "Depth");
-      pushField("timeLimitMs", "Time limit (ms)");
-      pushField("parallel", "Parallel");
-      pushField("workers", "Workers");
-      pushField("alphaBeta", "Alpha–Beta");
-      pushField("transposition", "Transposition");
-      pushField("moveOrdering", "Move ordering");
-      pushField("killerMoves", "Killer moves");
-      pushField("quiescence", "Quiescence");
-      pushField("maxQuiescenceDepth", "Max quiescence depth");
-      pushField("iterativeDeepening", "Iterative deepening");
-      pushField("aspiration", "Aspiration windows");
-      pushField("nullMove", "Null‑move pruning");
-      pushField("lmr", "Late move reductions");
-      pushField("endgameTablebase", "Endgame tablebase");
-    }
-    if (white.type === "mcts" || black.type === "mcts") {
-      pushField("iterations", "Iterations");
-      pushField("rolloutDepth", "Rollout depth");
-      pushField("explorationConstant", "Exploration constant");
-      pushField("mctsParallel", "Parallel");
-      pushField("mctsWorkers", "Workers");
-      pushField("rolloutPolicy", "Rollout policy");
-      pushField("leafEvaluation", "Leaf evaluation");
-      pushField("guidanceDepth", "Guidance depth");
-      pushField("rolloutCutoffDepth", "Rollout cutoff depth");
-      pushField("mctsTransposition", "Transposition");
-      pushField("progressiveWidening", "Progressive widening");
-    }
-    return fields;
-  }, [snapshotConfig]);
-
-  const formatValue = value => {
-    if (value === undefined || value === null) return "–";
-    if (typeof value === "boolean") return value ? "on" : "off";
-    return String(value);
-  };
-
-  const diffRows = useMemo(() => {
-    const white = snapshotConfig.white;
-    const black = snapshotConfig.black;
-    return buildConfigRows
-      .map(row => ({
-        label: row.label,
-        white: formatValue(white[row.key]),
-        black: formatValue(black[row.key]),
-      }))
-      .filter(row => showAllDiff || row.white !== row.black);
-  }, [buildConfigRows, snapshotConfig, showAllDiff]);
+  const cloneConfig = config => ({
+    white: { ...config.white },
+    black: { ...config.black },
+  });
 
   const applyFairnessLock = configs => {
-    const next = {
-      white: { ...configs.white },
-      black: { ...configs.black },
-    };
+    const next = cloneConfig(configs);
     if (next.white.type === "minimax" && next.black.type === "minimax") {
       const minDepth = Math.min(next.white.depth ?? 1, next.black.depth ?? 1);
       const minTime = Math.min(next.white.timeLimitMs ?? 1, next.black.timeLimitMs ?? 1);
@@ -261,17 +210,131 @@ const EvaluationPanel = () => {
     return next;
   };
 
-  const getEffectiveSnapshot = () => {
-    if (!fairnessLock || sweepMode) {
-      return {
-        white: { ...snapshotConfig.white },
-        black: { ...snapshotConfig.black },
-      };
-    }
-    return applyFairnessLock(snapshotConfig);
+  const buildEvaluationSnapshot = (config = snapshotConfig) => {
+    const effectiveConfigs = !fairnessLock || sweepMode ? cloneConfig(config) : applyFairnessLock(config);
+    return {
+      variant,
+      white: effectiveConfigs.white,
+      black: effectiveConfigs.black,
+    };
   };
 
-  const drawScoreValue = drawPolicy === "zero" ? 0 : drawPolicy === "ignore" ? null : 0.5;
+  const stopPolling = () => {
+    pollTokenRef.current += 1;
+    if (pollTimeoutRef.current !== null) {
+      window.clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  };
+
+  const startPolling = evaluationIdToTrack => {
+    const token = ++pollTokenRef.current;
+    const poll = async () => {
+      if (pollTokenRef.current !== token) return;
+      try {
+        const data = await api.getEvaluationStatus(evaluationIdToTrack);
+        if (pollTokenRef.current !== token) return;
+        setStatus(prev => {
+          if (!prev) return data;
+          const changed =
+            prev.running !== data.running ||
+            prev.completedGames !== data.completedGames ||
+            prev.totalGames !== data.totalGames ||
+            prev.score?.whiteWins !== data.score?.whiteWins ||
+            prev.score?.blackWins !== data.score?.blackWins ||
+            prev.score?.draws !== data.score?.draws ||
+            (prev.results?.length ?? 0) !== (data.results?.length ?? 0);
+          return changed ? data : prev;
+        });
+        if (!data.running) {
+          setRunning(false);
+          activeEvaluationIdRef.current = null;
+          stopPolling();
+          return;
+        }
+      } catch {
+        if (pollTokenRef.current !== token) return;
+      }
+      if (pollTokenRef.current === token) {
+        pollTimeoutRef.current = window.setTimeout(poll, 1000);
+      }
+    };
+    pollTimeoutRef.current = window.setTimeout(poll, 1000);
+  };
+
+  const describeConfig = config => {
+    if (config.type === "minimax") {
+      return `Minimax d=${config.depth}, id=${config.iterativeDeepening ? "on" : "off"}, t=${config.timeLimitMs}ms, p=${config.parallel ? config.workers : 1}`;
+    }
+    if (config.type === "mcts") {
+      return `MCTS iter=${config.iterations}, depth=${config.rolloutDepth}, policy=${config.rolloutPolicy}`;
+    }
+    return "Human";
+  };
+
+  const activeRunSnapshot = (running || sweepRunning) && activeEvaluationSnapshotRef.current ? activeEvaluationSnapshotRef.current : null;
+  const displaySnapshot = activeRunSnapshot ?? buildEvaluationSnapshot(snapshotConfig);
+  const frozenSummarySnapshot = activeEvaluationSnapshotRef.current ?? lastEvaluationSnapshotRef.current ?? displaySnapshot;
+
+  const buildConfigRows = useMemo(() => {
+    const white = displaySnapshot.white;
+    const black = displaySnapshot.black;
+    const fields = [];
+    const pushField = (key, label) => fields.push({ key, label });
+    pushField("type", "Algorithm");
+    if (white.type === "minimax" || black.type === "minimax") {
+      pushField("depth", "Depth");
+      pushField("timeLimitMs", "Time limit (ms)");
+      pushField("parallel", "Parallel");
+      pushField("workers", "Workers");
+      pushField("alphaBeta", "Alpha–Beta");
+      pushField("transposition", "Transposition");
+      pushField("moveOrdering", "Move ordering");
+      pushField("killerMoves", "Killer moves");
+      pushField("quiescence", "Quiescence");
+      pushField("maxQuiescenceDepth", "Max quiescence depth");
+      pushField("iterativeDeepening", "Iterative deepening");
+      pushField("aspiration", "Aspiration windows");
+      pushField("nullMove", "Null‑move pruning");
+      pushField("lmr", "Late move reductions");
+      pushField("endgameTablebase", "Endgame tablebase");
+    }
+    if (white.type === "mcts" || black.type === "mcts") {
+      pushField("iterations", "Iterations");
+      pushField("rolloutDepth", "Rollout depth");
+      pushField("explorationConstant", "Exploration constant");
+      pushField("mctsParallel", "Parallel");
+      pushField("mctsWorkers", "Workers");
+      pushField("rolloutPolicy", "Rollout policy");
+      pushField("leafEvaluation", "Leaf evaluation");
+      pushField("guidanceDepth", "Guidance depth");
+      pushField("rolloutCutoffDepth", "Rollout cutoff depth");
+      pushField("mctsTransposition", "Transposition");
+      pushField("progressiveWidening", "Progressive widening");
+    }
+    return fields;
+  }, [displaySnapshot]);
+
+  const formatValue = value => {
+    if (value === undefined || value === null) return "–";
+    if (typeof value === "boolean") return value ? "on" : "off";
+    return String(value);
+  };
+
+  const diffRows = useMemo(() => {
+    const white = displaySnapshot.white;
+    const black = displaySnapshot.black;
+    return buildConfigRows
+      .map(row => ({
+        label: row.label,
+        white: formatValue(white[row.key]),
+        black: formatValue(black[row.key]),
+      }))
+      .filter(row => showAllDiff || row.white !== row.black);
+  }, [buildConfigRows, displaySnapshot, showAllDiff]);
+
+  const summaryDrawPolicy = frozenSummarySnapshot.drawPolicy ?? drawPolicy;
+  const drawScoreValue = summaryDrawPolicy === "zero" ? 0 : summaryDrawPolicy === "ignore" ? null : 0.5;
 
   const scoreStats = useMemo(() => {
     if (!status) return null;
@@ -279,7 +342,7 @@ const EvaluationPanel = () => {
     const blackWins = status.score?.blackWins ?? 0;
     const draws = status.score?.draws ?? 0;
     const total = whiteWins + blackWins + draws;
-    const nEff = drawPolicy === "ignore" ? whiteWins + blackWins : total;
+    const nEff = summaryDrawPolicy === "ignore" ? whiteWins + blackWins : total;
     if (nEff === 0) {
       return {
         whiteWins,
@@ -303,7 +366,7 @@ const EvaluationPanel = () => {
       pWhite,
       pBlack,
     };
-  }, [status, drawPolicy, drawScoreValue]);
+   }, [status, summaryDrawPolicy, drawScoreValue]);
 
   const wilsonInterval = (successes, n, z = 1.96) => {
     if (!n || n <= 0) return null;
@@ -370,84 +433,131 @@ const EvaluationPanel = () => {
     return next;
   };
 
-  const startEvaluation = async (configOverride, options = { setRunningState: true }) => {
-    const effective = configOverride ?? getEffectiveSnapshot();
-    const payload = {
+  const createEvaluationPayload = (configOverride = snapshotConfig) => {
+    const effective = buildEvaluationSnapshot(configOverride);
+    return {
       games,
-      variant,
+      variant: effective.variant,
       startPolicy,
       randomSeed: randomSeed === "" ? null : Number(randomSeed),
       randomizeOpening,
       randomizePlies,
-      resetConfigsAfterRun: resetAfterRun,
       experimentName: experimentName || null,
       notes: notes || null,
       drawPolicy,
       white: effective.white,
       black: effective.black,
     };
-    const response = await api.startEvaluation(payload);
-    setEvaluationId(response.evaluationId);
-    setStatus(response);
-    if (options.setRunningState !== false) {
-      setRunning(true);
+  };
+
+  const startEvaluation = async (configOverride, options = { setRunningState: true, trackStatus: true }) => {
+    const payload = options.payload ?? createEvaluationPayload(configOverride);
+    stopPolling();
+    activeEvaluationSnapshotRef.current = payload;
+    activeEvaluationIdRef.current = null;
+    try {
+      const response = await api.startEvaluation(payload);
+      setEvaluationId(response.evaluationId);
+      setStatus(response);
+      activeEvaluationIdRef.current = response.evaluationId;
+      lastEvaluationSnapshotRef.current = payload;
+      if (options.setRunningState !== false) {
+        runningRef.current = true;
+        setRunning(true);
+      }
+      if (options.trackStatus !== false && options.setRunningState !== false) {
+        startPolling(response.evaluationId);
+      }
+      return response.evaluationId;
+    } catch (error) {
+      activeEvaluationSnapshotRef.current = null;
+      activeEvaluationIdRef.current = null;
+      runningRef.current = false;
+      setRunning(false);
+      throw error;
     }
-    return response.evaluationId;
   };
 
   const stopEvaluation = async () => {
-    if (!evaluationId) return;
-    await api.stopEvaluation(evaluationId);
-    setRunning(false);
+    const currentEvaluationId = activeEvaluationIdRef.current ?? evaluationId;
+    if (!currentEvaluationId) return;
+    stopPolling();
+    try {
+      const data = await api.stopEvaluation(currentEvaluationId);
+      setStatus(data);
+    } finally {
+      activeEvaluationIdRef.current = null;
+      activeEvaluationSnapshotRef.current = null;
+      runningRef.current = false;
+      setRunning(false);
+    }
   };
 
   const runSweep = async () => {
-    if (sweepRunning) return;
+    if (sweepRunningRef.current || runningRef.current) return;
     const values = parseSweepValues();
     if (!values.length) return;
+    stopPolling();
+    sweepStopRequestedRef.current = false;
+    const frozenSweepBaseConfig = cloneConfig(snapshotConfig);
+    const frozenSweepBasePayload = createEvaluationPayload(frozenSweepBaseConfig);
+    sweepRunningRef.current = true;
     setSweepRunning(true);
-    setSweepStopRequested(false);
     setSweepResults([]);
-    for (const value of values) {
-      if (sweepStopRequested) break;
-      const base = {
-        white: { ...snapshotConfig.white },
-        black: { ...snapshotConfig.black },
-      };
-      const config = applySweepValue(base, value);
-      setSweepStatus({ value, running: true });
-      const evalId = await startEvaluation(config, { setRunningState: false });
-      let finished = false;
-      while (!finished) {
-        await new Promise(resolve => setTimeout(resolve, 900));
-        const data = await api.getEvaluationStatus(evalId);
-        setStatus(data);
-        if (!data.running) {
-          finished = true;
-          setRunning(false);
-          setSweepResults(prev => [
-            ...prev,
-            {
-              value,
-              score: data.score,
-              summary: data.summary,
-              totalGames: data.totalGames,
-            },
-          ]);
-        }
-        if (sweepStopRequested && data.running) {
-          await api.stopEvaluation(evalId);
+    try {
+      for (const value of values) {
+        if (sweepStopRequestedRef.current) break;
+        const config = applySweepValue(cloneConfig(frozenSweepBaseConfig), value);
+        setSweepStatus({ value, running: true });
+        const payload = {
+          ...frozenSweepBasePayload,
+          white: config.white,
+          black: config.black,
+        };
+        const evalId = await startEvaluation(config, { setRunningState: false, trackStatus: false, payload });
+        activeEvaluationIdRef.current = evalId;
+        let finished = false;
+        while (!finished) {
+          if (sweepStopRequestedRef.current && activeEvaluationIdRef.current === evalId) {
+            await api.stopEvaluation(evalId);
+          }
+          await new Promise(resolve => window.setTimeout(resolve, 900));
+          if (sweepStopRequestedRef.current && activeEvaluationIdRef.current === evalId) {
+            await api.stopEvaluation(evalId);
+          }
+          const data = await api.getEvaluationStatus(evalId);
+          setStatus(data);
+          if (!data.running) {
+            finished = true;
+            activeEvaluationIdRef.current = null;
+            setSweepResults(prev => [
+              ...prev,
+              {
+                value,
+                score: data.score,
+                summary: data.summary,
+                totalGames: data.totalGames,
+              },
+            ]);
+          }
         }
       }
+    } finally {
+      sweepStopRequestedRef.current = false;
+      activeEvaluationIdRef.current = null;
+      activeEvaluationSnapshotRef.current = null;
+      sweepRunningRef.current = false;
+      setSweepStatus(null);
+      setSweepRunning(false);
     }
-    setSweepStatus(null);
-    setSweepRunning(false);
   };
 
   const stopSweep = async () => {
-    setSweepStopRequested(true);
-    if (evaluationId) {
-      await api.stopEvaluation(evaluationId);
+    sweepStopRequestedRef.current = true;
+    const currentEvaluationId = activeEvaluationIdRef.current ?? evaluationId;
+    if (currentEvaluationId) {
+      const data = await api.stopEvaluation(currentEvaluationId);
+      setStatus(data);
     }
   };
 
@@ -477,19 +587,19 @@ const EvaluationPanel = () => {
 
   const copySummary = async () => {
     if (!status || !scoreStats) return;
-    const effective = getEffectiveSnapshot();
+    const effective = frozenSummarySnapshot;
     const lines = [
-      `Experiment: ${experimentName || "(unnamed)"}`,
-      `Variant: ${variant}`,
-      `Games: ${status.totalGames}`,
+      `Experiment: ${effective.experimentName || "(unnamed)"}`,
+      `Variant: ${effective.variant}`,
+      `Games: ${effective.games ?? status.totalGames}`,
       `White: ${describeConfig(effective.white)}`,
       `Black: ${describeConfig(effective.black)}`,
       `W/D/L: ${scoreStats.whiteWins}/${scoreStats.draws}/${scoreStats.blackWins}`,
-      `Win rates: W ${(scoreStats.pWhite ?? 0).toFixed(3)}, B ${(scoreStats.pBlack ?? 0).toFixed(3)} (draw policy: ${drawPolicy})`,
+      `Win rates: W ${(scoreStats.pWhite ?? 0).toFixed(3)}, B ${(scoreStats.pBlack ?? 0).toFixed(3)} (draw policy: ${summaryDrawPolicy})`,
       `Avg moves: ${status.summary?.avgMoves?.toFixed(2) ?? "0"}, Avg duration: ${status.summary?.avgDuration?.toFixed(2) ?? "0"}s`,
       `Avg move time W: ${status.summary?.avgMoveTimeWhite?.toFixed(3) ?? "0"}s, B: ${status.summary?.avgMoveTimeBlack?.toFixed(3) ?? "0"}s`,
     ];
-    if (notes) lines.push(`Notes: ${notes}`);
+    if (effective.notes) lines.push(`Notes: ${effective.notes}`);
     await navigator.clipboard.writeText(lines.join("\n"));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -507,7 +617,6 @@ const EvaluationPanel = () => {
         randomSeed,
         randomizeOpening,
         randomizePlies,
-        resetAfterRun,
         experimentName,
         notes,
         drawPolicy,
@@ -516,7 +625,7 @@ const EvaluationPanel = () => {
         sweepParam,
         sweepValues,
         sweepSide,
-        snapshotConfig,
+        snapshotConfig: cloneConfig(snapshotConfig),
       },
     };
     persistPresets([...presets, entry]);
@@ -534,7 +643,6 @@ const EvaluationPanel = () => {
     setRandomSeed(data.randomSeed ?? DEFAULTS.randomSeed);
     setRandomizeOpening(data.randomizeOpening ?? DEFAULTS.randomizeOpening);
     setRandomizePlies(data.randomizePlies ?? DEFAULTS.randomizePlies);
-    setResetAfterRun(data.resetAfterRun ?? DEFAULTS.resetAfterRun);
     setExperimentName(data.experimentName ?? DEFAULTS.experimentName);
     setNotes(data.notes ?? DEFAULTS.notes);
     setDrawPolicy(data.drawPolicy ?? DEFAULTS.drawPolicy);
@@ -544,7 +652,7 @@ const EvaluationPanel = () => {
     setSweepValues(data.sweepValues ?? DEFAULTS.sweepValues);
     setSweepSide(data.sweepSide ?? DEFAULTS.sweepSide);
     if (data.snapshotConfig) {
-      setSnapshotConfig(data.snapshotConfig);
+      setSnapshotConfig(cloneConfig(data.snapshotConfig));
     }
   };
 
@@ -555,28 +663,33 @@ const EvaluationPanel = () => {
   };
 
   useEffect(() => {
-    if (!running || !evaluationId) return;
-    pollRef.current = window.setInterval(async () => {
-      const data = await api.getEvaluationStatus(evaluationId);
-      setStatus(prev => {
-        if (!prev) return data;
-        const changed =
-          prev.running !== data.running ||
-          prev.completedGames !== data.completedGames ||
-          prev.totalGames !== data.totalGames ||
-          prev.score?.whiteWins !== data.score?.whiteWins ||
-          prev.score?.blackWins !== data.score?.blackWins ||
-          prev.score?.draws !== data.score?.draws ||
-          (prev.results?.length ?? 0) !== (data.results?.length ?? 0);
-        return changed ? data : prev;
-      });
-      if (!data.running) {
-        setRunning(false);
-      }
-    }, 1000);
+    runningRef.current = running;
+  }, [running]);
 
-    return () => window.clearInterval(pollRef.current);
-  }, [api, evaluationId, running]);
+  useEffect(() => {
+    sweepRunningRef.current = sweepRunning;
+  }, [sweepRunning]);
+
+  useEffect(() => {
+    const becameActive = isEvaluateTabActive && !wasEvaluateTabActiveRef.current;
+    wasEvaluateTabActiveRef.current = isEvaluateTabActive;
+    if (becameActive && !running && !sweepRunning) {
+      const { variant: liveVariant, playerConfig: livePlayerConfig } = store.getState();
+      setVariant(liveVariant);
+      setSnapshotConfig({
+        white: { ...livePlayerConfig.white },
+        black: { ...livePlayerConfig.black },
+      });
+    }
+  }, [isEvaluateTabActive, running, sweepRunning, store]);
+
+  useEffect(() => () => {
+    pollTokenRef.current += 1;
+    if (pollTimeoutRef.current !== null) {
+      window.clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  }, []);
 
   const downloadResults = async format => {
     if (!evaluationId) return;
@@ -593,7 +706,7 @@ const EvaluationPanel = () => {
   };
 
   const hasResults = Boolean(status?.results?.length);
-  const effectiveSnapshot = getEffectiveSnapshot();
+  const effectiveSnapshot = displaySnapshot;
 
   return (
     <Stack spacing={2}>
@@ -687,10 +800,6 @@ const EvaluationPanel = () => {
                     <FormControlLabel
                       control={<Switch checked={randomizeOpening} onChange={event => setRandomizeOpening(event.target.checked)} />}
                       label="Randomize opening moves"
-                    />
-                    <FormControlLabel
-                      control={<Switch checked={resetAfterRun} onChange={event => setResetAfterRun(event.target.checked)} />}
-                      label="Reset configs after run"
                     />
                   </Box>
                 </AccordionDetails>
@@ -806,7 +915,7 @@ const EvaluationPanel = () => {
               <Button
                 size="small"
                 variant="outlined"
-                onClick={() => setSnapshotConfig({ white: playerConfig.white, black: playerConfig.black })}
+                onClick={syncDraftFromPlayState}
               >
                 Use current player settings
               </Button>
@@ -835,7 +944,7 @@ const EvaluationPanel = () => {
                 <Button
                   variant="contained"
                   onClick={() => (sweepMode ? runSweep() : startEvaluation())}
-                  disabled={running || sweepRunning}
+                  disabled={running || sweepRunning || effectiveSnapshot.white.type === "human" || effectiveSnapshot.black.type === "human"}
                 >
                   {sweepMode ? "Run sweep" : "Run evaluation"}
                 </Button>

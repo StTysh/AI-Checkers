@@ -44,6 +44,10 @@ pnpm-debug.log*
 *.log
 logs/
 
+# Project runtime / generated outputs
+output/
+.runtime/
+
 # Misc
 *.bak
 *.tmp

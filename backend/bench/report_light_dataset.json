@@ -1,0 +1,456 @@
+{
+  "defaults": {
+    "games": 50,
+    "moveCap": 120,
+    "startPolicy": "alternate",
+    "drawPolicy": "half",
+    "randomizeOpening": false,
+    "randomizePlies": 0
+  },
+  "experiments": [
+    {
+      "name": "british-baseline-minimax-vs-mcts",
+      "variant": "british",
+      "games": 100,
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 50,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "international-baseline-minimax-vs-mcts",
+      "variant": "international",
+      "games": 100,
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 50,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "british-minimax-no-transposition",
+      "variant": "british",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": false,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 50,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "international-minimax-no-transposition",
+      "variant": "international",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": false,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 50,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "british-minimax-no-quiescence",
+      "variant": "british",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": false,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 50,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "international-minimax-no-quiescence",
+      "variant": "international",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": false,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 50,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "british-minimax-iterative-depth3",
+      "variant": "british",
+      "white": {
+        "type": "minimax",
+        "depth": 3,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": true,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 50,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "international-minimax-iterative-depth3",
+      "variant": "international",
+      "white": {
+        "type": "minimax",
+        "depth": 3,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": true,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 50,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "british-mcts-heuristic-transposition",
+      "variant": "british",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "heuristic",
+        "leafEvaluation": "heuristic_eval",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": true,
+        "mctsTranspositionMaxEntries": 10000,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "international-mcts-heuristic-transposition",
+      "variant": "international",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "heuristic",
+        "leafEvaluation": "heuristic_eval",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": true,
+        "mctsTranspositionMaxEntries": 10000,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "british-mcts-progressive-bias",
+      "variant": "british",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "heuristic",
+        "leafEvaluation": "heuristic_eval",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": true,
+        "pbWeight": 0.5
+      }
+    },
+    {
+      "name": "international-mcts-progressive-bias",
+      "variant": "international",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "heuristic",
+        "leafEvaluation": "heuristic_eval",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": true,
+        "pbWeight": 0.5
+      }
+    },
+    {
+      "name": "british-mcts-progressive-widening",
+      "variant": "british",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": true,
+        "pwK": 1.5,
+        "pwAlpha": 0.5,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "international-mcts-progressive-widening",
+      "variant": "international",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": true,
+        "pwK": 1.5,
+        "pwAlpha": 0.5,
+        "progressiveBias": false
+      }
+    }
+  ]
+}
