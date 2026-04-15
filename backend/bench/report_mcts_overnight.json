@@ -1,0 +1,177 @@
+{
+  "defaults": {
+    "games": 40,
+    "moveCap": 120,
+    "startPolicy": "alternate",
+    "drawPolicy": "half",
+    "randomizeOpening": false,
+    "randomizePlies": 0
+  },
+  "experiments": [
+    {
+      "name": "international-mcts-heuristic-transposition-full",
+      "variant": "international",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "heuristic",
+        "leafEvaluation": "heuristic_eval",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": true,
+        "mctsTranspositionMaxEntries": 10000,
+        "progressiveWidening": false,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "british-mcts-progressive-bias",
+      "variant": "british",
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "heuristic",
+        "leafEvaluation": "heuristic_eval",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": true,
+        "pbWeight": 0.5
+      }
+    },
+    {
+      "name": "international-mcts-progressive-bias",
+      "variant": "international",
+      "games": 35,
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "heuristic",
+        "leafEvaluation": "heuristic_eval",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": false,
+        "progressiveBias": true,
+        "pbWeight": 0.5
+      }
+    },
+    {
+      "name": "british-mcts-progressive-widening",
+      "variant": "british",
+      "games": 50,
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": true,
+        "pwK": 1.5,
+        "pwAlpha": 0.5,
+        "progressiveBias": false
+      }
+    },
+    {
+      "name": "international-mcts-progressive-widening",
+      "variant": "international",
+      "games": 50,
+      "white": {
+        "type": "minimax",
+        "depth": 2,
+        "alphaBeta": true,
+        "transposition": true,
+        "moveOrdering": true,
+        "killerMoves": true,
+        "quiescence": true,
+        "iterativeDeepening": false,
+        "parallel": false,
+        "workers": 1,
+        "deterministicOrdering": true,
+        "timeLimitMs": 150
+      },
+      "black": {
+        "type": "mcts",
+        "iterations": 75,
+        "rolloutDepth": 20,
+        "explorationConstant": 1.4,
+        "rolloutPolicy": "random",
+        "leafEvaluation": "random_terminal",
+        "mctsParallel": false,
+        "mctsWorkers": 1,
+        "mctsTransposition": false,
+        "progressiveWidening": true,
+        "pwK": 1.5,
+        "pwAlpha": 0.5,
+        "progressiveBias": false
+      }
+    }
+  ]
+}

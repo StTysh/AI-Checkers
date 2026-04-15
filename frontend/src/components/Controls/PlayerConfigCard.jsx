@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import {
   Box,
   Card,
@@ -31,6 +31,7 @@ const PlayerConfigCard = ({ color }) => {
   const config = store(state => state.playerConfig[color]);
   const boardState = store(state => state.boardState);
   const updatePlayer = store(state => state.updatePlayerConfig);
+  const setPlayerConfig = store(state => state.setPlayerConfig);
   const gameMode = store(state => state.gameMode);
   const gameReady = store(state => state.gameReady);
   const manualAiApproval = store(state => state.manualAiApproval);
@@ -40,16 +41,19 @@ const PlayerConfigCard = ({ color }) => {
   const globalMaxWorkers = systemInfo?.recommendedMaxWorkers ?? 16;
   const [performing, setPerforming] = useState(false);
 
-  const commitConfig = (primaryUpdates, secondaryUpdates) => {
+  const clonePlayerConfig = value => JSON.parse(JSON.stringify(value));
+
+  const commitConfig = async (primaryUpdates, secondaryUpdates) => {
+    const previousPlayerConfig = clonePlayerConfig(store.getState().playerConfig);
     updatePlayer(color, primaryUpdates);
     if (secondaryUpdates) {
       updatePlayer(otherColor, secondaryUpdates);
     }
-    const { playerConfig } = store.getState();
-    api.configurePlayers({
-      white: playerConfig.white,
-      black: playerConfig.black,
-    });
+    try {
+      await api.configurePlayers(store.getState().playerConfig);
+    } catch {
+      setPlayerConfig(previousPlayerConfig);
+    }
   };
 
   const adjustParallelWorkers = (key, parallelKey, value, commit = false, extraUpdates = {}) => {
@@ -76,7 +80,7 @@ const PlayerConfigCard = ({ color }) => {
 
     const primaryUpdates = { [key]: currentValue, ...extraUpdates };
     if (commit) {
-      commitConfig(primaryUpdates, secondaryUpdates);
+      void commitConfig(primaryUpdates, secondaryUpdates);
     } else {
       updatePlayer(color, primaryUpdates);
       if (secondaryUpdates) {
@@ -104,23 +108,23 @@ const PlayerConfigCard = ({ color }) => {
         clampHandler(clamped, true);
         return;
       }
-      syncConfig({ [key]: clamped });
+      void syncConfig({ [key]: clamped });
     },
   });
 
   const sliderHandlers = key => ({
     onChange: (_, val) => updatePlayer(color, { [key]: val }),
-    onChangeCommitted: (_, val) => syncConfig({ [key]: val }),
+    onChangeCommitted: (_, val) => void syncConfig({ [key]: val }),
   });
 
-
-  const syncConfig = changes => {
+  const syncConfig = async changes => {
+    const previousPlayerConfig = clonePlayerConfig(store.getState().playerConfig);
     updatePlayer(color, changes);
-    const { playerConfig } = store.getState();
-    api.configurePlayers({
-      white: playerConfig.white,
-      black: playerConfig.black,
-    });
+    try {
+      await api.configurePlayers(store.getState().playerConfig);
+    } catch {
+      setPlayerConfig(previousPlayerConfig);
+    }
   };
 
   const isOptionDisabled = option => {
@@ -148,8 +152,8 @@ const PlayerConfigCard = ({ color }) => {
     setPerforming(true);
     try {
       await api.performPendingAIMove(color);
-    } catch (error) {
-      // Error already surfaced via global toast/state.
+    } catch {
+      // Error already surfaced via global state.
     } finally {
       setPerforming(false);
     }
@@ -182,7 +186,7 @@ const PlayerConfigCard = ({ color }) => {
           <Select
             value={config.type}
             label="Player Type"
-            onChange={event => syncConfig({ type: event.target.value })}
+            onChange={event => void syncConfig({ type: event.target.value })}
             disabled={configLocked}
           >
             {PLAYER_KINDS.map(option => (
@@ -220,18 +224,18 @@ const PlayerConfigCard = ({ color }) => {
                             updates.moveOrdering = false;
                             updates.killerMoves = false;
                           }
-                          syncConfig(updates);
+                          void syncConfig(updates);
                         }}
                         disabled={configLocked}
                       />
                     }
-                    label="Enable Alpha–Beta"
+                    label="Enable Alpha-Beta"
                   />
                   <FormControlLabel
                     control={
                       <Switch
                         checked={config.transposition}
-                        onChange={event => syncConfig({ transposition: event.target.checked })}
+                        onChange={event => void syncConfig({ transposition: event.target.checked })}
                         disabled={configLocked}
                       />
                     }
@@ -247,7 +251,7 @@ const PlayerConfigCard = ({ color }) => {
                           if (!enabled) {
                             updates.killerMoves = false;
                           }
-                          syncConfig(updates);
+                          void syncConfig(updates);
                         }}
                         disabled={configLocked || !config.alphaBeta}
                       />
@@ -258,7 +262,7 @@ const PlayerConfigCard = ({ color }) => {
                     control={
                       <Switch
                         checked={config.killerMoves}
-                        onChange={event => syncConfig({ killerMoves: event.target.checked })}
+                        onChange={event => void syncConfig({ killerMoves: event.target.checked })}
                         disabled={configLocked || !config.alphaBeta || !config.moveOrdering}
                       />
                     }
@@ -268,7 +272,7 @@ const PlayerConfigCard = ({ color }) => {
                     control={
                       <Switch
                         checked={config.quiescence}
-                        onChange={event => syncConfig({ quiescence: event.target.checked })}
+                        onChange={event => void syncConfig({ quiescence: event.target.checked })}
                         disabled={configLocked}
                       />
                     }
@@ -285,7 +289,7 @@ const PlayerConfigCard = ({ color }) => {
                         control={
                           <Switch
                             checked={config.iterativeDeepening}
-                            onChange={event => syncConfig({ iterativeDeepening: event.target.checked })}
+                            onChange={event => void syncConfig({ iterativeDeepening: event.target.checked })}
                             disabled={configLocked}
                           />
                         }
@@ -331,7 +335,7 @@ const PlayerConfigCard = ({ color }) => {
                         control={
                           <Switch
                             checked={config.aspiration}
-                            onChange={event => syncConfig({ aspiration: event.target.checked })}
+                            onChange={event => void syncConfig({ aspiration: event.target.checked })}
                             disabled={configLocked || !config.alphaBeta}
                           />
                         }
@@ -353,7 +357,7 @@ const PlayerConfigCard = ({ color }) => {
                         control={
                           <Switch
                             checked={config.historyHeuristic}
-                            onChange={event => syncConfig({ historyHeuristic: event.target.checked })}
+                            onChange={event => void syncConfig({ historyHeuristic: event.target.checked })}
                             disabled={configLocked || !config.moveOrdering}
                           />
                         }
@@ -363,7 +367,7 @@ const PlayerConfigCard = ({ color }) => {
                         control={
                           <Switch
                             checked={config.butterflyHeuristic}
-                            onChange={event => syncConfig({ butterflyHeuristic: event.target.checked })}
+                            onChange={event => void syncConfig({ butterflyHeuristic: event.target.checked })}
                             disabled={configLocked || !config.moveOrdering || !config.historyHeuristic}
                           />
                         }
@@ -373,7 +377,7 @@ const PlayerConfigCard = ({ color }) => {
                         control={
                           <Switch
                             checked={config.nullMove}
-                            onChange={event => syncConfig({ nullMove: event.target.checked })}
+                            onChange={event => void syncConfig({ nullMove: event.target.checked })}
                             disabled={configLocked || !config.alphaBeta}
                           />
                         }
@@ -396,7 +400,7 @@ const PlayerConfigCard = ({ color }) => {
                         control={
                           <Switch
                             checked={config.lmr}
-                            onChange={event => syncConfig({ lmr: event.target.checked })}
+                            onChange={event => void syncConfig({ lmr: event.target.checked })}
                             disabled={configLocked || !config.alphaBeta || !config.moveOrdering}
                           />
                         }
@@ -441,7 +445,7 @@ const PlayerConfigCard = ({ color }) => {
                         control={
                           <Switch
                             checked={config.deterministicOrdering}
-                            onChange={event => syncConfig({ deterministicOrdering: event.target.checked })}
+                            onChange={event => void syncConfig({ deterministicOrdering: event.target.checked })}
                             disabled={configLocked}
                           />
                         }
@@ -451,7 +455,7 @@ const PlayerConfigCard = ({ color }) => {
                         control={
                           <Switch
                             checked={config.endgameTablebase}
-                            onChange={event => syncConfig({ endgameTablebase: event.target.checked })}
+                            onChange={event => void syncConfig({ endgameTablebase: event.target.checked })}
                             disabled={configLocked}
                           />
                         }
@@ -557,63 +561,63 @@ const PlayerConfigCard = ({ color }) => {
                         fullWidth
                         disabled={configLocked}
                       />
-                        <FormGroup>
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={config.mctsParallel}
-                                onChange={event => {
-                                  const enabled = event.target.checked;
-                                  adjustParallelWorkers("mctsWorkers", "mctsParallel", config.mctsWorkers, true, { mctsParallel: enabled });
-                                }}
-                                disabled={configLocked}
-                              />
-                            }
-                            label="Enable Parallel MCTS"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={config.mctsTransposition}
-                                onChange={event => syncConfig({ mctsTransposition: event.target.checked })}
-                                disabled={configLocked}
-                              />
-                            }
-                            label="Enable MCTS Transposition"
-                          />
-                          <FormControlLabel
-                            control={
-                              <Switch
-                                checked={config.progressiveBias}
-                                onChange={event => syncConfig({ progressiveBias: event.target.checked })}
-                                disabled={configLocked}
-                              />
-                            }
-                            label="Enable Progressive Bias"
-                          />
-                        </FormGroup>
-                        <TextField
-                          label="Progressive bias weight"
-                          type="number"
-                          size="small"
-                          value={config.pbWeight}
-                          {...numberFieldHandlers("pbWeight")}
-                          inputProps={{ step: 0.05, min: 0, max: 10 }}
-                          fullWidth
-                          disabled={configLocked || !config.progressiveBias}
+                      <FormGroup>
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={config.mctsParallel}
+                              onChange={event => {
+                                const enabled = event.target.checked;
+                                adjustParallelWorkers("mctsWorkers", "mctsParallel", config.mctsWorkers, true, { mctsParallel: enabled });
+                              }}
+                              disabled={configLocked}
+                            />
+                          }
+                          label="Enable Parallel MCTS"
                         />
-                        <Typography variant="body2">Workers</Typography>
-                        <Slider
-                          value={config.mctsWorkers}
-                          onChange={(_, val) => adjustParallelWorkers("mctsWorkers", "mctsParallel", val, false)}
-                          onChangeCommitted={(_, val) => adjustParallelWorkers("mctsWorkers", "mctsParallel", val, true)}
-                          min={1}
-                          max={globalMaxWorkers}
-                          step={1}
-                          valueLabelDisplay="auto"
-                          marks
-                          disabled={configLocked || !config.mctsParallel}
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={config.mctsTransposition}
+                              onChange={event => void syncConfig({ mctsTransposition: event.target.checked })}
+                              disabled={configLocked}
+                            />
+                          }
+                          label="Enable MCTS Transposition"
                         />
+                        <FormControlLabel
+                          control={
+                            <Switch
+                              checked={config.progressiveBias}
+                              onChange={event => void syncConfig({ progressiveBias: event.target.checked })}
+                              disabled={configLocked}
+                            />
+                          }
+                          label="Enable Progressive Bias"
+                        />
+                      </FormGroup>
+                      <TextField
+                        label="Progressive bias weight"
+                        type="number"
+                        size="small"
+                        value={config.pbWeight}
+                        {...numberFieldHandlers("pbWeight")}
+                        inputProps={{ step: 0.05, min: 0, max: 10 }}
+                        fullWidth
+                        disabled={configLocked || !config.progressiveBias}
+                      />
+                      <Typography variant="body2">Workers</Typography>
+                      <Slider
+                        value={config.mctsWorkers}
+                        onChange={(_, val) => adjustParallelWorkers("mctsWorkers", "mctsParallel", val, false)}
+                        onChangeCommitted={(_, val) => adjustParallelWorkers("mctsWorkers", "mctsParallel", val, true)}
+                        min={1}
+                        max={globalMaxWorkers}
+                        step={1}
+                        valueLabelDisplay="auto"
+                        marks
+                        disabled={configLocked || !config.mctsParallel}
+                      />
                       <TextField
                         label="Transposition max entries"
                         type="number"
@@ -629,7 +633,7 @@ const PlayerConfigCard = ({ color }) => {
                           control={
                             <Switch
                               checked={config.progressiveWidening}
-                              onChange={event => syncConfig({ progressiveWidening: event.target.checked })}
+                              onChange={event => void syncConfig({ progressiveWidening: event.target.checked })}
                               disabled={configLocked}
                             />
                           }
@@ -663,7 +667,7 @@ const PlayerConfigCard = ({ color }) => {
                         <Select
                           value={config.rolloutPolicy}
                           label="Rollout policy"
-                          onChange={event => syncConfig({ rolloutPolicy: event.target.value })}
+                          onChange={event => void syncConfig({ rolloutPolicy: event.target.value })}
                           disabled={configLocked}
                         >
                           <MenuItem value="random">Random</MenuItem>
@@ -696,7 +700,7 @@ const PlayerConfigCard = ({ color }) => {
                         <Select
                           value={config.leafEvaluation}
                           label="Leaf evaluation"
-                          onChange={event => syncConfig({ leafEvaluation: event.target.value })}
+                          onChange={event => void syncConfig({ leafEvaluation: event.target.value })}
                           disabled={configLocked}
                         >
                           <MenuItem value="random_terminal">Random terminal</MenuItem>
@@ -722,3 +726,4 @@ const PlayerConfigCard = ({ color }) => {
 };
 
 export default PlayerConfigCard;
+

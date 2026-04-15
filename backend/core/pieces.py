@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from itertools import count
 from typing import TYPE_CHECKING, Optional
 
 from .move import Coordinate, Move
@@ -11,7 +10,19 @@ if TYPE_CHECKING:
 
 
 MoveList = list[Move]
-_PIECE_ID_COUNTER = count()
+_LAST_PIECE_ID = -1
+
+
+def _next_piece_id() -> int:
+    global _LAST_PIECE_ID
+    _LAST_PIECE_ID += 1
+    return _LAST_PIECE_ID
+
+
+def reserve_piece_ids_through(identifier: int) -> None:
+    global _LAST_PIECE_ID
+    if identifier > _LAST_PIECE_ID:
+        _LAST_PIECE_ID = identifier
 
 
 class Color(Enum):
@@ -25,7 +36,9 @@ class Piece:
         self.row = row
         self.col = col
         self.is_king = False
-        self.id = identifier if identifier is not None else next(_PIECE_ID_COUNTER)
+        self.id = identifier if identifier is not None else _next_piece_id()
+        if identifier is not None:
+            reserve_piece_ids_through(identifier)
 
     def move(self, new_row: int, new_col: int) -> None:
         self.row = new_row

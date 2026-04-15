@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 const Footer = () => (
   <Box mt={4} textAlign="center" color="text.secondary" fontSize={14}>
     <Typography component="span">
-      © {dayjs().format("YYYY")} Checkers AI Playground · Experiment responsibly · Built by Stanislav Tyshkovets.
+      (c) {dayjs().format("YYYY")} Checkers AI Playground | Experiment responsibly | Built by Stanislav Tyshkovets.
     </Typography>
   </Box>
 );

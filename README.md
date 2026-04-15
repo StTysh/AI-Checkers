@@ -2,40 +2,13 @@
 
 AI-Checkers is a full-stack checkers playground for experimenting with classic board-game AI. It combines a FastAPI backend that manages game state and search algorithms with a React frontend for interactive play, benchmarking, and configuration.
 
-## What it does
-
-- Supports British (8x8) and International (10x10) checkers variants.
-- Lets users play player-vs-player, player-vs-AI, and AI-vs-AI matches.
-- Exposes configurable Minimax and MCTS agents with multiple search options.
-- Includes evaluation tooling for running repeated AI matchups and exporting results.
-- Provides a browser UI with animated gameplay, manual AI move confirmation, and session-based state.
-
-## Core capabilities
-
-### Minimax engine
-
-- Alpha-beta pruning
-- Transposition table support
-- Move ordering and killer-move heuristics
-- Quiescence search
-- Iterative deepening
-- Time-controlled search
-- Parallel root search
-
-### MCTS engine
-
-- Parallel rollouts
-- Guided rollouts
-- Rollout cutoffs
-- Hybrid leaf evaluation
-
-### Frontend workflow
-
-- Variant and game-mode selection
-- Search parameter tuning from the UI
-- Undo and reset controls
-- Evaluation tab for automated agent benchmarking
-- CSV and JSON export of AI-vs-AI runs
+### Features
+- British (8x8) and International (10x10) variants.
+- Minimax with feature toggles (alpha-beta, TT, move ordering, killer moves, quiescence), iterative deepening, time control, and parallel root search.
+- MCTS with parallel rollouts, guided rollouts, rollout cutoff, and hybrid leaf evaluation.
+- Game modes: PvP, PvAI, AIvAI.
+- Evaluation tooling (AIvAI tab): auto-play N games, live stats, CSV/JSON export.
+- Animated pieces, undo/reset, manual AI move confirmation.
 
 ## Stack
 
@@ -109,15 +82,14 @@ The backend includes a tuning script for empirically testing heuristic weights w
 venv\Scripts\python.exe backend\bench\tune_heuristic.py --board-size 8 --depth 6 --games 20 --trials 100 --randomize-plies 4 --print-best
 ```
 
-International example:
-
+International (10x10) example (time-budgeted via iterative deepening):
 ```bash
 venv\Scripts\python.exe backend\bench\tune_heuristic.py --board-size 10 --iterative-deepening --time-limit-ms 1000 --depth 12 --games 20 --trials 100 --randomize-plies 4 --print-best
 ```
 
-The script prints candidate evaluation profiles that can be applied to the backend heuristic configuration.
+The script prints a Python snippet for `_PROFILE_8` / `_PROFILE_10` that you can paste into the heuristic profile module under `backend/ai/`.
 
 ## Notes
 
-- The backend stores session state in memory and assigns each browser session its own game state.
+- The backend assigns each browser session its own game state and persists local runtime state for recovery after restart.
 - The project is designed as an experimentation environment rather than a production service.

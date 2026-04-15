@@ -5,6 +5,8 @@ import unittest
 from contextlib import contextmanager
 from pathlib import Path
 
+from pydantic import ValidationError
+
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
@@ -14,7 +16,7 @@ if str(BACKEND_DIR) not in sys.path:
 from ai.cancel import CancelledError  # noqa: E402
 from core.player import PlayerController, PlayerKind  # noqa: E402
 from server import session as session_module  # noqa: E402
-from server.schemas import AIMoveRequest, ConfigRequest, PlayerConfigPayload, VariantRequest  # noqa: E402
+from server.schemas import AIMoveRequest, ConfigRequest, EvaluationStartRequest, PerformAIMoveRequest, PlayerConfigPayload, VariantRequest  # noqa: E402
 from core.board import Board  # noqa: E402
 from core.pieces import Color, Man  # noqa: E402
 
@@ -47,6 +49,61 @@ def _dummy_ai_controller(kind: PlayerKind, started: threading.Event, block: bool
 
 
 class SessionOptionWiringTests(unittest.TestCase):
+    def _make_evaluation_state(self, draw_policy: str | None) -> session_module.EvaluationState:
+        state = session_module.EvaluationState(
+            evaluation_id="eval-1",
+            config={
+                "variant": "british",
+                "startPolicy": "alternate",
+                "randomSeed": 7,
+                "randomizeOpening": False,
+                "randomizePlies": 0,
+                "moveCap": 300,
+                "experimentName": "demo",
+                "notes": "test",
+                "drawPolicy": draw_policy,
+                "maxDurationSeconds": 60,
+                "white": {"type": "minimax", "depth": 4},
+                "black": {"type": "mcts", "iterations": 25},
+            },
+            total_games=3,
+            results=[],
+            running=False,
+            stop_event=threading.Event(),
+        )
+        state.results.extend(
+            [
+                session_module.EvaluationResult(
+                    index=1,
+                    winner="white",
+                    move_count=12,
+                    duration_seconds=1.5,
+                    avg_move_time_white=0.1,
+                    avg_move_time_black=0.2,
+                    starting_color="white",
+                ),
+                session_module.EvaluationResult(
+                    index=2,
+                    winner="white",
+                    move_count=14,
+                    duration_seconds=2.0,
+                    avg_move_time_white=0.2,
+                    avg_move_time_black=0.3,
+                    starting_color="black",
+                ),
+                session_module.EvaluationResult(
+                    index=3,
+                    winner=None,
+                    move_count=16,
+                    duration_seconds=2.5,
+                    avg_move_time_white=0.3,
+                    avg_move_time_black=0.4,
+                    starting_color="white",
+                ),
+            ]
+        )
+        return state
+
     def test_run_ai_move_payload_maps_minimax_fields(self) -> None:
         captured = {}
         started = threading.Event()
@@ -241,6 +298,127 @@ class SessionOptionWiringTests(unittest.TestCase):
         cpu_total = session_module.os.cpu_count() or 1
         recommended = max(1, cpu_total - 2)
         self.assertLessEqual(captured["workers"], recommended)
+
+    def test_perform_ai_move_increments_state_version(self) -> None:
+        started = threading.Event()
+
+        def fake_create_minimax_controller(name: str, depth: int = 4, **kwargs):
+            return _dummy_ai_controller(PlayerKind.MINIMAX, started)
+
+        with _patch_attr(session_module, "create_minimax_controller", fake_create_minimax_controller):
+            session = session_module.GameSession()
+            pending = session.run_ai_move(
+                AIMoveRequest(
+                    algorithm="minimax",
+                    color="white",
+                    depth=3,
+                    persist=False,
+                    commitImmediately=False,
+                )
+            )
+
+        self.assertIsNotNone(pending["pendingAiMoves"]["white"])
+        version_before = session._state_version
+
+        payload = session.perform_ai_move(PerformAIMoveRequest(color="white"))
+
+        self.assertEqual(session._state_version, version_before + 1)
+        self.assertIsNone(payload["pendingAiMoves"]["white"])
+        self.assertEqual(payload["moveCount"], 1)
+
+    def test_evaluation_request_rejects_human_players(self) -> None:
+        with self.assertRaises(ValidationError):
+            EvaluationStartRequest(
+                games=1,
+                variant="british",
+                white={"type": "human"},
+                black={"type": "mcts"},
+            )
+
+    def test_evaluation_draw_policy_affects_summary_rates(self) -> None:
+        session = session_module.GameSession()
+
+        for policy, expected_white, expected_black in (
+            ("zero", 2 / 3, 0.0),
+            ("half", 5 / 6, 1 / 6),
+            ("ignore", 1.0, 0.0),
+        ):
+            with self.subTest(policy=policy):
+                state = self._make_evaluation_state(policy)
+                payload = session._evaluation_status_payload(state)
+                self.assertEqual(payload["score"]["whiteWins"], 2)
+                self.assertEqual(payload["score"]["blackWins"], 0)
+                self.assertEqual(payload["score"]["draws"], 1)
+                self.assertAlmostEqual(payload["summary"]["winRateWhite"], expected_white)
+                self.assertAlmostEqual(payload["summary"]["winRateBlack"], expected_black)
+                self.assertEqual(payload["metadata"]["drawPolicy"], policy)
+
+    def test_evaluation_status_includes_time_budget_fields(self) -> None:
+        session = session_module.GameSession()
+        state = self._make_evaluation_state("half")
+
+        payload = session._evaluation_status_payload(state)
+
+        self.assertEqual(payload["metadata"]["maxDurationSeconds"], 60)
+        self.assertEqual(payload["metadata"]["moveCap"], 300)
+        self.assertIn("startedAtEpoch", payload)
+        self.assertIn("updatedAtEpoch", payload)
+        self.assertIn("elapsedWallTimeSeconds", payload)
+
+    def test_evaluation_request_accepts_time_budget_and_move_cap(self) -> None:
+        payload = EvaluationStartRequest(
+            games=1,
+            variant="british",
+            moveCap=450,
+            maxDurationSeconds=120,
+            white={"type": "minimax", "depth": 2},
+            black={"type": "mcts", "iterations": 10},
+        )
+
+        self.assertEqual(payload.moveCap, 450)
+        self.assertEqual(payload.maxDurationSeconds, 120)
+
+    def test_evaluation_time_budget_sets_stop_reason(self) -> None:
+        session = session_module.GameSession()
+        state = session_module.EvaluationState(
+            evaluation_id="eval-time-budget",
+            config={
+                "variant": "british",
+                "drawPolicy": "half",
+                "moveCap": 300,
+                "maxDurationSeconds": 1,
+                "white": {"type": "minimax", "depth": 1},
+                "black": {"type": "mcts", "iterations": 1},
+            },
+            total_games=10,
+            results=[],
+            running=True,
+            stop_event=threading.Event(),
+            deadline_at_epoch=time.time() - 1,
+        )
+
+        session._run_evaluation(state)
+        payload = session._evaluation_status_payload(state)
+
+        self.assertFalse(payload["running"])
+        self.assertEqual(payload["stopReason"], "time_budget")
+
+    def test_evaluation_export_omits_reset_configs_after_run(self) -> None:
+        session = session_module.GameSession()
+        state = self._make_evaluation_state("half")
+        with session._evaluation_lock:
+            session._evaluations[state.evaluation_id] = state
+        try:
+            content_type, csv_text = session.get_evaluation_results(state.evaluation_id, "csv")
+        finally:
+            with session._evaluation_lock:
+                session._evaluations.pop(state.evaluation_id, None)
+
+        self.assertEqual(content_type, "text/csv")
+        self.assertNotIn("resetConfigsAfterRun", csv_text)
+        self.assertIn("drawPolicy", csv_text)
+        self.assertIn("maxDurationSeconds", csv_text)
+        self.assertIn("stopReason", csv_text)
 
     def test_reset_cancels_real_parallel_minimax(self) -> None:
         session = session_module.GameSession()

@@ -255,8 +255,10 @@ export const useGameAPI = store => {
         );
         setBoardState(data);
         setGameReady(false);
+        return data;
       } catch (error) {
         setError(error.message);
+        throw error;
       }
     },
     [cancelAiRequests, store],
@@ -276,8 +278,10 @@ export const useGameAPI = store => {
         );
         setBoardState(data);
         setGameReady(false);
+        return data;
       } catch (error) {
         setError(error.message);
+        throw error;
       }
     },
     [cancelAiRequests, store],
@@ -296,8 +300,10 @@ export const useGameAPI = store => {
           }),
         );
         setBoardState(data);
+        return data;
       } catch (error) {
         setError(error.message);
+        throw error;
       }
     },
     [cancelAiRequests, store],

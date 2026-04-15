@@ -35,6 +35,19 @@ class AgentWiringRuntimeTests(unittest.TestCase):
         _ = ctrl_tt.select_move(game)
         self.assertGreater(len(minimax._TRANSPOSITION_TABLE), 0)
 
+    def test_game_reset_does_not_clear_global_transposition_table(self) -> None:
+        game = Game(board_size=8)
+
+        minimax.clear_transposition_table()
+        ctrl_tt = create_minimax_controller("T", depth=3, use_transposition=True, use_alpha_beta=True)
+        _ = ctrl_tt.select_move(game)
+        populated_size = len(minimax._TRANSPOSITION_TABLE)
+
+        game.reset()
+
+        self.assertGreater(populated_size, 0)
+        self.assertEqual(len(minimax._TRANSPOSITION_TABLE), populated_size)
+
     def test_mcts_controller_closure_contains_key_flags(self) -> None:
         ctrl = create_mcts_controller(
             "T",

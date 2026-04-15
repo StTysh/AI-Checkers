@@ -74,6 +74,10 @@ const useGameStore = create(
         }
       }),
     setVariant: variant => set({ variant }),
+    setPlayerConfig: playerConfig =>
+      set(state => {
+        state.playerConfig = playerConfig;
+      }),
     updatePlayerConfig: (color, changes) =>
       set(state => {
         state.playerConfig[color] = { ...state.playerConfig[color], ...changes };

@@ -64,8 +64,12 @@ class AIConfigFields(BaseModel):
 
 class PlayerConfigPayload(AIConfigFields):
     type: Optional[
-        Literal["human", "minimax", "mcts", "genetic", "reinforcement", "remote"]
+        Literal["human", "minimax", "mcts"]
     ] = None
+
+
+class EvaluationPlayerConfigPayload(AIConfigFields):
+    type: Literal["minimax", "mcts"]
 
 
 class ConfigRequest(BaseModel):
@@ -93,18 +97,19 @@ class PerformAIMoveRequest(BaseModel):
 
 
 class EvaluationStartRequest(BaseModel):
-    games: int = Field(..., ge=1, le=500)
+    games: int = Field(..., ge=1, le=100_000)
     variant: Literal["british", "international"]
     startPolicy: Literal["alternate", "white", "black"] = "alternate"
     randomSeed: Optional[int] = None
     randomizeOpening: bool = False
     randomizePlies: int = Field(default=0, ge=0, le=12)
-    resetConfigsAfterRun: bool = False
+    moveCap: int = Field(default=300, ge=20, le=2_000)
     experimentName: Optional[str] = None
     notes: Optional[str] = None
     drawPolicy: Optional[Literal["zero", "half", "ignore"]] = "half"
-    white: PlayerConfigPayload
-    black: PlayerConfigPayload
+    maxDurationSeconds: Optional[int] = Field(default=None, ge=1, le=7 * 24 * 60 * 60)
+    white: EvaluationPlayerConfigPayload
+    black: EvaluationPlayerConfigPayload
 
 
 class EvaluationStopRequest(BaseModel):

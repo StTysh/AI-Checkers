@@ -9,7 +9,7 @@ const Header = () => (
         <SportsEsportsIcon color="primary" />
         <Typography variant="h6">Checkers AI Playground</Typography>
       </Stack>
-      <Button variant="contained" startIcon={<CloudSyncIcon />} href="http://localhost:8000/docs" target="_blank">
+      <Button variant="contained" startIcon={<CloudSyncIcon />} href="/docs" target="_blank">
         Backend Docs
       </Button>
     </Toolbar>
