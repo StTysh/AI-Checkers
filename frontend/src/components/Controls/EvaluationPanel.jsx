@@ -233,6 +233,7 @@ const EvaluationPanel = ({ isEvaluateTabActive }) => {
       if (pollTokenRef.current !== token) return;
       try {
         const data = await api.getEvaluationStatus(evaluationIdToTrack);
+        if (!data) return;
         if (pollTokenRef.current !== token) return;
         setStatus(prev => {
           if (!prev) return data;
@@ -457,6 +458,7 @@ const EvaluationPanel = ({ isEvaluateTabActive }) => {
     activeEvaluationIdRef.current = null;
     try {
       const response = await api.startEvaluation(payload);
+      if (!response) return null;
       setEvaluationId(response.evaluationId);
       setStatus(response);
       activeEvaluationIdRef.current = response.evaluationId;
@@ -482,15 +484,20 @@ const EvaluationPanel = ({ isEvaluateTabActive }) => {
     const currentEvaluationId = activeEvaluationIdRef.current ?? evaluationId;
     if (!currentEvaluationId) return;
     stopPolling();
+    let data = null;
     try {
-      const data = await api.stopEvaluation(currentEvaluationId);
-      setStatus(data);
-    } finally {
-      activeEvaluationIdRef.current = null;
-      activeEvaluationSnapshotRef.current = null;
-      runningRef.current = false;
-      setRunning(false);
+      data = await api.stopEvaluation(currentEvaluationId);
+    } catch (error) {
+      startPolling(currentEvaluationId);
+      throw error;
     }
+    if (data) {
+      setStatus(data);
+    }
+    activeEvaluationIdRef.current = null;
+    activeEvaluationSnapshotRef.current = null;
+    runningRef.current = false;
+    setRunning(false);
   };
 
   const runSweep = async () => {
@@ -515,17 +522,32 @@ const EvaluationPanel = ({ isEvaluateTabActive }) => {
           black: config.black,
         };
         const evalId = await startEvaluation(config, { setRunningState: false, trackStatus: false, payload });
+        if (!evalId) break;
         activeEvaluationIdRef.current = evalId;
         let finished = false;
         while (!finished) {
           if (sweepStopRequestedRef.current && activeEvaluationIdRef.current === evalId) {
-            await api.stopEvaluation(evalId);
+            try {
+              await api.stopEvaluation(evalId);
+            } catch {
+              // Keep polling so the UI does not falsely abandon a backend run.
+            }
           }
           await new Promise(resolve => window.setTimeout(resolve, 900));
           if (sweepStopRequestedRef.current && activeEvaluationIdRef.current === evalId) {
-            await api.stopEvaluation(evalId);
+            try {
+              await api.stopEvaluation(evalId);
+            } catch {
+              // Keep polling so the UI does not falsely abandon a backend run.
+            }
           }
-          const data = await api.getEvaluationStatus(evalId);
+          let data = null;
+          try {
+            data = await api.getEvaluationStatus(evalId);
+          } catch {
+            continue;
+          }
+          if (!data) break;
           setStatus(data);
           if (!data.running) {
             finished = true;
@@ -557,7 +579,7 @@ const EvaluationPanel = ({ isEvaluateTabActive }) => {
     const currentEvaluationId = activeEvaluationIdRef.current ?? evaluationId;
     if (currentEvaluationId) {
       const data = await api.stopEvaluation(currentEvaluationId);
-      setStatus(data);
+      if (data) setStatus(data);
     }
   };
 

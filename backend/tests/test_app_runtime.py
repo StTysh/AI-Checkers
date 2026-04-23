@@ -192,6 +192,7 @@ class AppRuntimeTests(unittest.TestCase):
             session._persist_evaluations()
 
             restored_store = app_module._SessionStore(state_file=state_file, max_sessions=5, session_ttl_seconds=3600)
+            restored_store.resume_pending_evaluations(acquire_slot=lambda: True, on_finished=lambda: None)
             restored_id, restored_session, created = restored_store.get_or_create(session_id)
             self.assertTrue(resumed.wait(timeout=2.0), "Persisted evaluation did not resume after restore.")
             self.assertTrue(finished.wait(timeout=2.0), "Resumed evaluation did not finish cleanly after restore.")

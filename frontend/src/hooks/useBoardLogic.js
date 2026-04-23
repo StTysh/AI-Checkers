@@ -14,6 +14,7 @@ export const useBoardLogic = () => {
   const setHighlightMoves = store(state => state.setHighlightMoves);
 
   const previousPiecesRef = useRef([]);
+  const validMovesRequestRef = useRef(0);
 
   useEffect(() => {
     if (!boardState?.pieces) {
@@ -58,6 +59,7 @@ export const useBoardLogic = () => {
       if (!boardState || !gameReady) return;
 
       if (selectedCell && selectedCell.row === cell.row && selectedCell.col === cell.col) {
+        validMovesRequestRef.current += 1;
         setSelectedCell(null);
         setHighlightMoves([]);
         return;
@@ -65,6 +67,7 @@ export const useBoardLogic = () => {
 
       const target = highlightLookup.get(`${cell.row},${cell.col}`);
       if (selectedCell && target) {
+        validMovesRequestRef.current += 1;
         await api.sendMove({ start: selectedCell, steps: target.move.steps });
         setSelectedCell(null);
         setHighlightMoves([]);
@@ -73,20 +76,24 @@ export const useBoardLogic = () => {
 
       const piece = squares[cell.row]?.[cell.col]?.piece;
       if (!piece || piece.color !== boardState.turn) {
+        validMovesRequestRef.current += 1;
         setSelectedCell(null);
         setHighlightMoves([]);
         return;
       }
 
+      const token = ++validMovesRequestRef.current;
       setSelectedCell(cell);
       try {
         const data = await api.getValidMoves(cell);
+        if (validMovesRequestRef.current !== token) return;
         const targets = data.moves.map(move => {
           const last = move.steps[move.steps.length - 1] ?? move.start;
           return { row: last.row, col: last.col, move };
         });
         setHighlightMoves(targets);
       } catch {
+        if (validMovesRequestRef.current !== token) return;
         setHighlightMoves([]);
       }
     },

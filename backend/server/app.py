@@ -214,7 +214,6 @@ class _SessionStore:
             if not isinstance(snapshot, dict):
                 continue
             session = GameSession.from_snapshot(snapshot, on_change=self._make_on_change(session_id))
-            session.resume_pending_evaluations()
             self._sessions[session_id] = session
             self._last_access[session_id] = last_access
             self._snapshots[session_id] = snapshot
@@ -223,6 +222,20 @@ class _SessionStore:
                 self._sessions.pop(session_id, None)
                 self._last_access.pop(session_id, None)
                 self._snapshots.pop(session_id, None)
+
+    def resume_pending_evaluations(
+        self,
+        *,
+        acquire_slot,
+        on_finished,
+    ) -> None:
+        with self._lock:
+            sessions = list(self._sessions.values())
+        for session in sessions:
+            session.resume_pending_evaluations(
+                acquire_slot=acquire_slot,
+                on_finished=on_finished,
+            )
 
     def _read_state_locked(self) -> dict[str, Any]:
         if not self._state_file.exists():
@@ -239,6 +252,28 @@ class _SessionStore:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_path, self._state_file)
+
+
+class _EvaluationLimiter:
+    def __init__(self, max_running: int) -> None:
+        self._max_running = max(1, int(max_running))
+        self._running = 0
+        self._lock = Lock()
+
+    def try_acquire(self) -> bool:
+        with self._lock:
+            if self._running >= self._max_running:
+                return False
+            self._running += 1
+            return True
+
+    def release(self) -> None:
+        with self._lock:
+            self._running = max(0, self._running - 1)
+
+    @property
+    def max_running(self) -> int:
+        return self._max_running
 
 
 def create_app() -> FastAPI:
@@ -258,6 +293,12 @@ def create_app() -> FastAPI:
         state_file=_runtime_state_file(),
     )
     app.state.session_store = store
+    evaluation_limiter = _EvaluationLimiter(_int_env("CHECKERS_MAX_GLOBAL_EVALUATIONS", 1))
+    app.state.evaluation_limiter = evaluation_limiter
+    store.resume_pending_evaluations(
+        acquire_slot=evaluation_limiter.try_acquire,
+        on_finished=evaluation_limiter.release,
+    )
 
     def get_session(request: Request, response: Response) -> GameSession:
         session_id = request.cookies.get(_SESSION_COOKIE_NAME)
@@ -318,6 +359,11 @@ def create_app() -> FastAPI:
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.post("/ai-cancel")
+    def ai_cancel(session: GameSession = Depends(get_session)):
+        session.cancel_ai()
+        return session.serialize()
+
     @app.post("/ai-perform")
     def ai_perform(payload: PerformAIMoveRequest, session: GameSession = Depends(get_session)):
         try:
@@ -351,10 +397,22 @@ def create_app() -> FastAPI:
 
     @app.post("/evaluate/start")
     def evaluate_start(payload: EvaluationStartRequest, session: GameSession = Depends(get_session)):
+        if session.has_running_evaluation():
+            raise HTTPException(status_code=400, detail="Another evaluation is already running for this session.")
+        limiter: _EvaluationLimiter = app.state.evaluation_limiter
+        if not limiter.try_acquire():
+            raise HTTPException(
+                status_code=409,
+                detail=f"Maximum number of running evaluations reached ({limiter.max_running}).",
+            )
         try:
-            return session.start_evaluation(payload)
+            return session.start_evaluation(payload, on_finished=limiter.release)
         except ValueError as exc:
+            limiter.release()
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception:
+            limiter.release()
+            raise
 
     @app.get("/evaluate/status")
     def evaluate_status(evaluation_id: str = Query(..., alias="evaluation_id"), session: GameSession = Depends(get_session)):

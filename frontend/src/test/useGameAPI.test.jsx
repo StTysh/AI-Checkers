@@ -5,6 +5,13 @@ import { createJsonResponse, createTextResponse, createTestStore } from "./test-
 
 describe("useGameAPI", () => {
   const fetchMock = vi.fn();
+  const deferredResponse = () => {
+    let resolve;
+    const promise = new Promise(res => {
+      resolve = res;
+    });
+    return { promise, resolve };
+  };
 
   beforeEach(() => {
     fetchMock.mockReset();
@@ -23,6 +30,7 @@ describe("useGameAPI", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(store.getState().boardState).toBeTruthy());
 
+    fetchMock.mockResolvedValueOnce(createJsonResponse({ cancelled: true }));
     fetchMock.mockResolvedValueOnce(
       createJsonResponse({ variant: "international", boardState: { turn: "black" }, marker: "variant" }),
     );
@@ -31,13 +39,19 @@ describe("useGameAPI", () => {
       boardState: { turn: "black" },
       marker: "variant",
     });
+    expect(fetchMock.mock.calls[1]).toMatchObject([
+      "/api/ai-cancel",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    ]);
 
+    fetchMock.mockResolvedValueOnce(createJsonResponse({ cancelled: true }));
     fetchMock.mockResolvedValueOnce(createJsonResponse({ variant: "international", boardState: { reset: true } }));
     await expect(result.current.resetGame({ variant: "international" })).resolves.toEqual({
       variant: "international",
       boardState: { reset: true },
     });
 
+    fetchMock.mockResolvedValueOnce(createJsonResponse({ cancelled: true }));
     fetchMock.mockResolvedValueOnce(
       createJsonResponse({ variant: "international", boardState: { configured: true }, marker: "config" }),
     );
@@ -60,8 +74,31 @@ describe("useGameAPI", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(store.getState().boardState).toBeTruthy());
 
+    fetchMock.mockResolvedValueOnce(createJsonResponse({ cancelled: true }));
     fetchMock.mockResolvedValueOnce(createTextResponse("backend rejected", false, 400));
     await expect(invoke(result.current)).rejects.toThrow("backend rejected");
     expect(store.getState().error).toBe("backend rejected");
+  });
+
+  it("ignores stale initial board responses after a newer reset response", async () => {
+    const store = createTestStore();
+    const initialBoard = deferredResponse();
+    fetchMock.mockReturnValueOnce(initialBoard.promise);
+
+    const { result } = renderHook(() => useGameAPI(store));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    fetchMock.mockResolvedValueOnce(createJsonResponse({ cancelled: true }));
+    fetchMock.mockResolvedValueOnce(createJsonResponse({ variant: "international", marker: "reset" }));
+    await expect(result.current.resetGame({ variant: "international" })).resolves.toEqual({
+      variant: "international",
+      marker: "reset",
+    });
+
+    initialBoard.resolve(createJsonResponse({ variant: "british", marker: "stale-board" }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(store.getState().boardState).toMatchObject({ marker: "reset" });
   });
 });

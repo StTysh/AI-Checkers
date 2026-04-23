@@ -1,6 +1,7 @@
 import { AppBar, Toolbar, Typography, Stack, Button } from "@mui/material";
 import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import CloudSyncIcon from "@mui/icons-material/CloudSync";
+import { DOCS_URL } from "../../utils/apiConfig";
 
 const Header = () => (
   <AppBar position="static" color="transparent" elevation={0} sx={{ mb: 2 }}>
@@ -9,7 +10,7 @@ const Header = () => (
         <SportsEsportsIcon color="primary" />
         <Typography variant="h6">Checkers AI Playground</Typography>
       </Stack>
-      <Button variant="contained" startIcon={<CloudSyncIcon />} href="/docs" target="_blank">
+      <Button variant="contained" startIcon={<CloudSyncIcon />} href={DOCS_URL} target="_blank">
         Backend Docs
       </Button>
     </Toolbar>

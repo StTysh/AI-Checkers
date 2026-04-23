@@ -22,6 +22,7 @@ AI-Checkers is a capstone project focused on adversarial search in draughts. It 
 
 ### Frontend
 
+- Node.js 22.12.0 or newer compatible with Vite 7
 - React 18
 - Vite
 - Material UI
@@ -62,15 +63,31 @@ Equivalent Uvicorn entry point:
 uvicorn server.app:app --reload --host 127.0.0.1 --port 8000
 ```
 
+For a more stable demo run without the development reloader:
+
+```bash
+python main.py --host 127.0.0.1 --port 8000
+```
+
 ### Frontend
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-The frontend expects the backend API on `http://127.0.0.1:8000`.
+The Vite development server proxies `/api` and `/docs` to the backend on `http://127.0.0.1:8000`.
+
+For `npm run preview` or other static frontend serving, either put the frontend behind a reverse proxy that forwards `/api` and `/docs` to the backend, or build with explicit backend URLs:
+
+```bash
+cd frontend
+$env:VITE_API_BASE="http://127.0.0.1:8000"
+$env:VITE_DOCS_URL="http://127.0.0.1:8000/docs"
+npm run build
+npm run preview
+```
 
 ## Testing and verification
 
@@ -78,6 +95,7 @@ The frontend expects the backend API on `http://127.0.0.1:8000`.
 
 ```bash
 cd backend
+venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 venv\Scripts\python.exe -m pytest
 ```
 
@@ -85,6 +103,7 @@ venv\Scripts\python.exe -m pytest
 
 ```bash
 cd frontend
+npm ci
 npm test
 ```
 
@@ -92,6 +111,7 @@ npm test
 
 ```bash
 cd frontend
+npm ci
 npm run build
 ```
 
@@ -122,13 +142,15 @@ The backend includes a tuning script for empirical heuristic tuning via repeated
 British 8x8 example:
 
 ```bash
-venv\Scripts\python.exe backend\bench\tune_heuristic.py --board-size 8 --depth 6 --games 20 --trials 100 --randomize-plies 4 --print-best
+cd backend
+venv\Scripts\python.exe bench\tune_heuristic.py --board-size 8 --depth 6 --games 20 --trials 100 --randomize-plies 4 --print-best
 ```
 
 International 10x10 example with iterative deepening:
 
 ```bash
-venv\Scripts\python.exe backend\bench\tune_heuristic.py --board-size 10 --iterative-deepening --time-limit-ms 1000 --depth 12 --games 20 --trials 100 --randomize-plies 4 --print-best
+cd backend
+venv\Scripts\python.exe bench\tune_heuristic.py --board-size 10 --iterative-deepening --time-limit-ms 1000 --depth 12 --games 20 --trials 100 --randomize-plies 4 --print-best
 ```
 
 The script prints a Python snippet for `_PROFILE_8` or `_PROFILE_10` that can be pasted into the heuristic profile module under `backend/ai/`.
@@ -136,5 +158,7 @@ The script prints a Python snippet for `_PROFILE_8` or `_PROFILE_10` that can be
 ## Notes
 
 - Each browser session gets its own `GameSession`, and local runtime state is persisted for recovery after restart.
+- Long evaluations are globally limited by `CHECKERS_MAX_GLOBAL_EVALUATIONS` to protect the demo machine from parallel browser sessions overloading it. The default is `1`.
+- Frontend AI cancellation calls the backend `/api/ai-cancel` endpoint so stale AI workers do not commit after reset or configuration changes.
 - The repository is intended as a coursework and experimentation environment rather than a production deployment target.
 - Generated outputs under `output/` and runtime state under `.runtime/` are ignored by git.

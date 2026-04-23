@@ -124,6 +124,7 @@ class EvaluationState:
     stop_reason: Optional[str] = None
     completed_at_epoch: Optional[float] = None
     error_message: Optional[str] = None
+    on_finished: Optional[Callable[[], None]] = None
 
 
 class GameSession:
@@ -176,7 +177,12 @@ class GameSession:
         with self.lock:
             return self._snapshot_locked()
 
-    def resume_pending_evaluations(self) -> None:
+    def resume_pending_evaluations(
+        self,
+        *,
+        acquire_slot: Optional[Callable[[], bool]] = None,
+        on_finished: Optional[Callable[[], None]] = None,
+    ) -> None:
         pending: list[EvaluationState] = []
         with self._evaluation_lock:
             for state in self._evaluations.values():
@@ -184,8 +190,21 @@ class GameSession:
                     state.stop_event = threading.Event()
                     pending.append(state)
 
+        changed = False
         for state in pending:
+            if acquire_slot is not None and not acquire_slot():
+                with self._evaluation_lock:
+                    state.running = False
+                    state.stop_reason = "global_limit_on_resume"
+                    state.updated_at_epoch = time.time()
+                    state.completed_at_epoch = time.time()
+                changed = True
+                continue
+            with self._evaluation_lock:
+                state.on_finished = on_finished
             self._launch_evaluation_thread(state)
+        if changed:
+            self._persist_evaluations()
 
     @classmethod
     def from_snapshot(
@@ -463,7 +482,12 @@ class GameSession:
             self._emit_change_locked()
             return self._serialize_locked()
 
-    def start_evaluation(self, payload: EvaluationStartRequest) -> dict[str, Any]:
+    def start_evaluation(
+        self,
+        payload: EvaluationStartRequest,
+        *,
+        on_finished: Optional[Callable[[], None]] = None,
+    ) -> dict[str, Any]:
         config = payload.model_dump()
         deadline_at_epoch = None
         if payload.maxDurationSeconds is not None:
@@ -477,6 +501,7 @@ class GameSession:
             running=True,
             stop_event=threading.Event(),
             deadline_at_epoch=deadline_at_epoch,
+            on_finished=on_finished,
         )
 
         with self._evaluation_lock:
@@ -507,6 +532,10 @@ class GameSession:
         if not state:
             raise ValueError("Unknown evaluation id.")
         return self._evaluation_status_payload(state)
+
+    def has_running_evaluation(self) -> bool:
+        with self._evaluation_lock:
+            return any(state.running for state in self._evaluations.values())
 
     def get_evaluation_results(self, evaluation_id: str, format: str) -> tuple[str, Any]:
         with self._evaluation_lock:
@@ -599,6 +628,8 @@ class GameSession:
                     state.stop_reason = "error"
                     state.error_message = str(exc)
                 self._persist_evaluations()
+            finally:
+                self._release_evaluation_slot(state)
 
         thread = threading.Thread(
             target=runner,
@@ -607,6 +638,14 @@ class GameSession:
         with self._evaluation_lock:
             state.thread = thread
         thread.start()
+
+    def _release_evaluation_slot(self, state: EvaluationState) -> None:
+        callback: Optional[Callable[[], None]]
+        with self._evaluation_lock:
+            callback = state.on_finished
+            state.on_finished = None
+        if callback is not None:
+            callback()
 
     def _serialize_locked(self) -> dict[str, Any]:
         payload = serialize_game(self.game, self.variant, self.player_settings)

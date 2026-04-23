@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { API_BASE } from "../utils/apiConfig";
 
-const API_BASE = "/api";
 const SUPPORTED_AI_TYPES = new Set(["minimax", "mcts"]);
 
 const MINIMAX_PAYLOAD_KEYS = [
@@ -69,17 +69,33 @@ const handleResponse = async response => {
   return response.json();
 };
 
+const apiFetch = (url, options = {}) =>
+  fetch(url, {
+    credentials: "include",
+    ...options,
+  });
+
 export const useGameAPI = store => {
   if (!store) throw new Error("useGameAPI requires a zustand store instance");
 
+  const aiLoopRef = useRef(false);
+  const aiIdleWaitersRef = useRef([]);
+  const aiRequestAbortRef = useRef(null);
+  const aiLoopTokenRef = useRef(0);
+  const boardRequestTokenRef = useRef(0);
+  const evaluationTokenRef = useRef(0);
+
   const loadBoard = useCallback(async () => {
     const { setBoardState, setLoading, setError, setGameReady } = store.getState();
+    const token = ++boardRequestTokenRef.current;
     try {
       setLoading(true);
-      const data = await handleResponse(await fetch(`${API_BASE}/board`));
+      const data = await handleResponse(await apiFetch(`${API_BASE}/board`));
+      if (boardRequestTokenRef.current !== token) return;
       setBoardState(data);
       setGameReady(false);
     } catch (error) {
+      if (boardRequestTokenRef.current !== token) return;
       setError(error.message);
     }
   }, [store]);
@@ -88,22 +104,25 @@ export const useGameAPI = store => {
     async payload => {
       const { setBoardState, setError } = store.getState();
       const controller = new AbortController();
+      const token = aiLoopTokenRef.current;
       aiRequestAbortRef.current?.abort();
       aiRequestAbortRef.current = controller;
       try {
         const data = await handleResponse(
-          await fetch(`${API_BASE}/ai-move`, {
+          await apiFetch(`${API_BASE}/ai-move`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload ?? {}),
             signal: controller.signal,
           }),
         );
+        if (aiLoopTokenRef.current !== token) return;
         setBoardState(data);
       } catch (error) {
         if (error?.name === "AbortError") {
           return;
         }
+        if (aiLoopTokenRef.current !== token) return;
         setError(error.message);
         throw error;
       } finally {
@@ -115,16 +134,24 @@ export const useGameAPI = store => {
     [store],
   );
 
-  const aiLoopRef = useRef(false);
-  const aiIdleWaitersRef = useRef([]);
-  const aiRequestAbortRef = useRef(null);
-  const aiLoopTokenRef = useRef(0);
+  const cancelBackendAi = useCallback(async () => {
+    try {
+      await handleResponse(
+        await apiFetch(`${API_BASE}/ai-cancel`, {
+          method: "POST",
+        }),
+      );
+    } catch {
+      // Best-effort cancellation; local tokens still protect against stale responses.
+    }
+  }, []);
 
   const cancelAiRequests = useCallback(() => {
     aiLoopTokenRef.current += 1;
     aiRequestAbortRef.current?.abort();
     aiRequestAbortRef.current = null;
-  }, []);
+    void cancelBackendAi();
+  }, [cancelBackendAi]);
 
   const notifyAiIdle = useCallback(() => {
     aiIdleWaitersRef.current.forEach(resolve => resolve());
@@ -143,16 +170,19 @@ export const useGameAPI = store => {
   const performPendingRequest = useCallback(
     async color => {
       const { setBoardState, setError } = store.getState();
+      const token = aiLoopTokenRef.current;
       try {
         const data = await handleResponse(
-          await fetch(`${API_BASE}/ai-perform`, {
+          await apiFetch(`${API_BASE}/ai-perform`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ color }),
           }),
         );
+        if (aiLoopTokenRef.current !== token) return;
         setBoardState(data);
       } catch (error) {
+        if (aiLoopTokenRef.current !== token) return;
         setError(error.message);
         throw error;
       }
@@ -209,18 +239,21 @@ export const useGameAPI = store => {
   const sendMove = useCallback(
     async payload => {
       const { setBoardState, setLastMove, setError } = store.getState();
+      const token = ++boardRequestTokenRef.current;
       try {
         const data = await handleResponse(
-          await fetch(`${API_BASE}/move`, {
+          await apiFetch(`${API_BASE}/move`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           }),
         );
+        if (boardRequestTokenRef.current !== token) return;
         setBoardState(data);
         setLastMove(payload);
         await runAITurns();
       } catch (error) {
+        if (boardRequestTokenRef.current !== token) return;
         setError(error.message);
         throw error;
       }
@@ -232,7 +265,7 @@ export const useGameAPI = store => {
     async ({ row, col }) => {
       const { setError } = store.getState();
       try {
-        return await handleResponse(await fetch(`${API_BASE}/valid-moves?row=${row}&col=${col}`));
+        return await handleResponse(await apiFetch(`${API_BASE}/valid-moves?row=${row}&col=${col}`));
       } catch (error) {
         setError(error.message);
         throw error;
@@ -245,18 +278,21 @@ export const useGameAPI = store => {
     async variant => {
       const { setBoardState, setError, setGameReady } = store.getState();
       cancelAiRequests();
+      const token = ++boardRequestTokenRef.current;
       try {
         const data = await handleResponse(
-          await fetch(`${API_BASE}/variant`, {
+          await apiFetch(`${API_BASE}/variant`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ variant }),
           }),
         );
+        if (boardRequestTokenRef.current !== token) return null;
         setBoardState(data);
         setGameReady(false);
         return data;
       } catch (error) {
+        if (boardRequestTokenRef.current !== token) return null;
         setError(error.message);
         throw error;
       }
@@ -268,18 +304,21 @@ export const useGameAPI = store => {
     async payload => {
       const { setBoardState, setError, setGameReady } = store.getState();
       cancelAiRequests();
+      const token = ++boardRequestTokenRef.current;
       try {
         const data = await handleResponse(
-          await fetch(`${API_BASE}/reset`, {
+          await apiFetch(`${API_BASE}/reset`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: payload ? JSON.stringify(payload) : undefined,
           }),
         );
+        if (boardRequestTokenRef.current !== token) return null;
         setBoardState(data);
         setGameReady(false);
         return data;
       } catch (error) {
+        if (boardRequestTokenRef.current !== token) return null;
         setError(error.message);
         throw error;
       }
@@ -291,17 +330,20 @@ export const useGameAPI = store => {
     async config => {
       const { setBoardState, setError } = store.getState();
       cancelAiRequests();
+      const token = ++boardRequestTokenRef.current;
       try {
         const data = await handleResponse(
-          await fetch(`${API_BASE}/config`, {
+          await apiFetch(`${API_BASE}/config`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(config),
           }),
         );
+        if (boardRequestTokenRef.current !== token) return null;
         setBoardState(data);
         return data;
       } catch (error) {
+        if (boardRequestTokenRef.current !== token) return null;
         setError(error.message);
         throw error;
       }
@@ -312,14 +354,17 @@ export const useGameAPI = store => {
   const undoMove = useCallback(async () => {
     const { setBoardState, setError } = store.getState();
     cancelAiRequests();
+    const token = ++boardRequestTokenRef.current;
     try {
       const data = await handleResponse(
-        await fetch(`${API_BASE}/undo`, {
+        await apiFetch(`${API_BASE}/undo`, {
           method: "POST",
         }),
       );
+      if (boardRequestTokenRef.current !== token) return;
       setBoardState(data);
     } catch (error) {
+      if (boardRequestTokenRef.current !== token) return;
       setError(error.message);
       throw error;
     }
@@ -328,7 +373,7 @@ export const useGameAPI = store => {
   const fetchSystemInfo = useCallback(async () => {
     const { setError } = store.getState();
     try {
-      return await handleResponse(await fetch(`${API_BASE}/system-info`));
+      return await handleResponse(await apiFetch(`${API_BASE}/system-info`));
     } catch (error) {
       setError(error.message);
       throw error;
@@ -345,15 +390,18 @@ export const useGameAPI = store => {
 
   const startEvaluation = useCallback(async payload => {
     const { setError } = store.getState();
+    const token = ++evaluationTokenRef.current;
     try {
-      return await handleResponse(
-        await fetch(`${API_BASE}/evaluate/start`, {
+      const data = await handleResponse(
+        await apiFetch(`${API_BASE}/evaluate/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }),
       );
+      return evaluationTokenRef.current === token ? data : null;
     } catch (error) {
+      if (evaluationTokenRef.current !== token) return null;
       setError(error.message);
       throw error;
     }
@@ -361,11 +409,14 @@ export const useGameAPI = store => {
 
   const getEvaluationStatus = useCallback(async evaluationId => {
     const { setError } = store.getState();
+    const token = evaluationTokenRef.current;
     try {
-      return await handleResponse(
-        await fetch(`${API_BASE}/evaluate/status?evaluation_id=${evaluationId}`),
+      const data = await handleResponse(
+        await apiFetch(`${API_BASE}/evaluate/status?evaluation_id=${evaluationId}`),
       );
+      return evaluationTokenRef.current === token ? data : null;
     } catch (error) {
+      if (evaluationTokenRef.current !== token) return null;
       setError(error.message);
       throw error;
     }
@@ -373,9 +424,10 @@ export const useGameAPI = store => {
 
   const stopEvaluation = useCallback(async evaluationId => {
     const { setError } = store.getState();
+    evaluationTokenRef.current += 1;
     try {
       return await handleResponse(
-        await fetch(`${API_BASE}/evaluate/stop`, {
+        await apiFetch(`${API_BASE}/evaluate/stop`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ evaluationId }),
@@ -388,7 +440,7 @@ export const useGameAPI = store => {
   }, [store]);
 
   const getEvaluationResults = useCallback(async (evaluationId, format = "csv") => {
-    const response = await fetch(`${API_BASE}/evaluate/results?evaluation_id=${evaluationId}&format=${format}`);
+    const response = await apiFetch(`${API_BASE}/evaluate/results?evaluation_id=${evaluationId}&format=${format}`);
     if (!response.ok) {
       const text = await response.text();
       throw new Error(text || "Backend error");

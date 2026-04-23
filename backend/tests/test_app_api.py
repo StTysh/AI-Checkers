@@ -259,6 +259,146 @@ class AppApiTests(unittest.TestCase):
         self.assertFalse(status.json()["running"])
         self.assertEqual(status.json()["stopReason"], "stopped_by_user")
 
+    def test_ai_cancel_endpoint_calls_session_cancel(self) -> None:
+        called = threading.Event()
+
+        def fake_cancel(self):  # noqa: ANN001
+            called.set()
+
+        with tempfile.TemporaryDirectory() as temp_dir, _patched_env(
+            CHECKERS_STATE_FILE=str(Path(temp_dir) / "session_store.json"),
+        ), _patch_attr(session_module.GameSession, "cancel_ai", fake_cancel):
+            client = TestClient(app_module.create_app())
+            response = client.post("/ai-cancel")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(called.is_set())
+
+    def test_global_evaluation_limit_rejects_other_sessions(self) -> None:
+        release = threading.Event()
+        started = threading.Event()
+
+        def fake_run(self, state):  # noqa: ANN001
+            started.set()
+            release.wait(timeout=2.0)
+            with self._evaluation_lock:
+                state.running = False
+                state.thread = None
+                state.stop_reason = state.stop_reason or "completed_games"
+                state.updated_at_epoch = state.started_at_epoch
+            self._persist_evaluations()
+
+        with tempfile.TemporaryDirectory() as temp_dir, _patched_env(
+            CHECKERS_STATE_FILE=str(Path(temp_dir) / "session_store.json"),
+            CHECKERS_MAX_GLOBAL_EVALUATIONS="1",
+        ), _patch_attr(session_module.GameSession, "_run_evaluation", fake_run):
+            app = app_module.create_app()
+            client_a = TestClient(app)
+            client_b = TestClient(app)
+            payload = {
+                "games": 5,
+                "variant": "british",
+                "white": {"type": "minimax", "depth": 2},
+                "black": {"type": "mcts", "iterations": 10},
+            }
+
+            first = client_a.post("/evaluate/start", json=payload)
+            self.assertEqual(first.status_code, 200)
+            evaluation_id = first.json()["evaluationId"]
+            self.assertTrue(started.wait(timeout=1.0))
+
+            second = client_b.post("/evaluate/start", json=payload)
+            release.set()
+            for _ in range(20):
+                status = client_a.get("/evaluate/status", params={"evaluation_id": evaluation_id})
+                if status.status_code == 200 and not status.json()["running"]:
+                    break
+                time.sleep(0.05)
+            third = client_b.post("/evaluate/start", json=payload)
+            if third.status_code == 200:
+                third_id = third.json()["evaluationId"]
+                for _ in range(20):
+                    status = client_b.get("/evaluate/status", params={"evaluation_id": third_id})
+                    if status.status_code == 200 and not status.json()["running"]:
+                        break
+                    time.sleep(0.05)
+
+        self.assertEqual(second.status_code, 409)
+        self.assertIn("Maximum number", second.json()["detail"])
+        self.assertEqual(third.status_code, 200)
+
+    def test_global_evaluation_limit_counts_restored_running_evaluations(self) -> None:
+        release = threading.Event()
+        started_count = 0
+        finished_count = 0
+        started_lock = threading.Lock()
+        finished_lock = threading.Lock()
+        restored_started = threading.Event()
+        both_finished = threading.Event()
+
+        def fake_run(self, state):  # noqa: ANN001
+            nonlocal started_count
+            with started_lock:
+                started_count += 1
+                if started_count >= 2:
+                    restored_started.set()
+            release.wait(timeout=2.0)
+            with self._evaluation_lock:
+                state.running = False
+                state.thread = None
+                state.stop_reason = state.stop_reason or "completed_games"
+                state.updated_at_epoch = time.time()
+                state.completed_at_epoch = time.time()
+            self._persist_evaluations()
+            nonlocal finished_count
+            with finished_lock:
+                finished_count += 1
+                if finished_count >= 2:
+                    both_finished.set()
+
+        with tempfile.TemporaryDirectory() as temp_dir, _patched_env(
+            CHECKERS_STATE_FILE=str(Path(temp_dir) / "session_store.json"),
+            CHECKERS_MAX_GLOBAL_EVALUATIONS="1",
+        ), _patch_attr(session_module.GameSession, "_run_evaluation", fake_run):
+            payload = {
+                "games": 5,
+                "variant": "british",
+                "white": {"type": "minimax", "depth": 2},
+                "black": {"type": "mcts", "iterations": 10},
+            }
+
+            first_app = app_module.create_app()
+            first_client = TestClient(first_app)
+            first = first_client.post("/evaluate/start", json=payload)
+            self.assertEqual(first.status_code, 200)
+            evaluation_id = first.json()["evaluationId"]
+            session_cookie = first.cookies.get("checkers_session_id")
+            self.assertIsNotNone(session_cookie)
+
+            restored_app = app_module.create_app()
+            restored_client = TestClient(restored_app)
+            restored_client.cookies.set("checkers_session_id", session_cookie)
+            self.assertTrue(restored_started.wait(timeout=1.0))
+
+            new_session_client = TestClient(restored_app)
+            second = new_session_client.post("/evaluate/start", json=payload)
+            release.set()
+
+            for _ in range(20):
+                status = first_client.get("/evaluate/status", params={"evaluation_id": evaluation_id})
+                if status.status_code == 200 and not status.json()["running"]:
+                    break
+                time.sleep(0.05)
+            for _ in range(20):
+                status = restored_client.get("/evaluate/status", params={"evaluation_id": evaluation_id})
+                if status.status_code == 200 and not status.json()["running"]:
+                    break
+                time.sleep(0.05)
+            self.assertTrue(both_finished.wait(timeout=1.0))
+
+        self.assertEqual(second.status_code, 409)
+        self.assertIn("Maximum number", second.json()["detail"])
+
     def test_evaluation_status_is_isolated_per_session(self) -> None:
         def fake_run(self, state):  # noqa: ANN001
             with self._evaluation_lock:
