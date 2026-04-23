@@ -1,16 +1,17 @@
 # AI-Checkers
 
-AI-Checkers is a full-stack checkers playground for experimenting with classic board-game AI. It combines a FastAPI backend that manages game state and search algorithms with a React frontend for interactive play, benchmarking, and configuration.
+AI-Checkers is a capstone project focused on adversarial search in draughts. It combines a FastAPI backend, a React frontend, a reversible game engine for British 8x8 and International 10x10 rules, configurable minimax and MCTS agents, and an unattended AI-versus-AI evaluation workflow for repeatable experiments.
 
-### Features
-- British (8x8) and International (10x10) variants.
-- Minimax with feature toggles (alpha-beta, TT, move ordering, killer moves, quiescence), iterative deepening, time control, and parallel root search.
-- MCTS with parallel rollouts, guided rollouts, rollout cutoff, and hybrid leaf evaluation.
-- Game modes: PvP, PvAI, AIvAI.
-- Evaluation tooling (AIvAI tab): auto-play N games, live stats, CSV/JSON export.
-- Animated pieces, undo/reset, manual AI move confirmation.
+## What the project does
 
-## Stack
+- Supports British 8x8 and International 10x10 draughts.
+- Exposes human-versus-human, human-versus-AI, and AI-versus-AI play through a browser UI.
+- Implements configurable minimax with alpha-beta, transposition tables, move ordering, quiescence, iterative deepening, time control, and related search options.
+- Implements configurable MCTS with rollout-policy, leaf-evaluation, progressive widening, progressive bias, transposition, and parallelism controls.
+- Supports staged AI moves, undo/reset, per-session recovery, and exportable evaluation results.
+- Includes unattended manifest-driven batch runners for long AI-versus-AI experiments.
+
+## Tech stack
 
 ### Backend
 
@@ -21,23 +22,27 @@ AI-Checkers is a full-stack checkers playground for experimenting with classic b
 
 ### Frontend
 
-- React
+- React 18
 - Vite
 - Material UI
 - Zustand
+- Vitest / Testing Library
 
 ## Repository structure
 
 ```text
 backend/
-  ai/        Search engines, heuristics, and benchmarking scripts
-  core/      Board representation, pieces, move rules, and session logic
-  server/    FastAPI application, API schemas, and request handling
+  ai/        Search engines, heuristics, and transposition support
+  bench/     Batch runners, manifests, tuning, and experiment tooling
+  core/      Board model, move generation, rule handling, undo, hashing
+  server/    FastAPI app, schemas, session layer, and API routes
+  tests/     Backend regression and runtime tests
 frontend/
-  src/       React UI, dialogs, controls, and evaluation screens
+  public/    Static assets
+  src/       React pages, controls, hooks, and frontend tests
 ```
 
-## Running locally
+## Local setup
 
 This repository is currently set up for Windows-first local development.
 
@@ -48,13 +53,13 @@ cd backend
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn server.app:app --reload --host 127.0.0.1 --port 8000
+python main.py --host 127.0.0.1 --port 8000 --reload
 ```
 
-Alternative entry point:
+Equivalent Uvicorn entry point:
 
 ```bash
-python main.py --host 127.0.0.1 --port 8000 --reload
+uvicorn server.app:app --reload --host 127.0.0.1 --port 8000
 ```
 
 ### Frontend
@@ -65,31 +70,71 @@ npm install
 npm run dev
 ```
 
-The frontend runs against the backend API on `http://127.0.0.1:8000`.
+The frontend expects the backend API on `http://127.0.0.1:8000`.
 
-## Usage
+## Testing and verification
 
-1. Start the backend and frontend.
-2. Open the frontend in the browser.
-3. Choose a ruleset, game mode, and AI configuration.
-4. Use the evaluation tab to run repeated AI matchups and export results.
+### Backend tests
+
+```bash
+cd backend
+venv\Scripts\python.exe -m pytest
+```
+
+### Frontend tests
+
+```bash
+cd frontend
+npm test
+```
+
+### Frontend production build
+
+```bash
+cd frontend
+npm run build
+```
+
+## Running experiments
+
+The browser UI includes an AI-versus-AI evaluation panel for interactive experiment setup, live statistics, and CSV / JSON export.
+
+For unattended runs, use the manifest runner in `backend/bench/`.
+
+Example:
+
+```bash
+cd backend
+venv\Scripts\python.exe bench\run_experiments.py --manifest bench\experiments.example.json --output-dir ..\output\evaluation_runs
+```
+
+Windows PowerShell wrappers for long report batches are also included, for example:
+
+- `backend\bench\run_report_light_dataset.ps1`
+- `backend\bench\run_eval_upgrade_24h.ps1`
+
+These wrappers create timestamped output folders and stream logs while the manifest runner executes.
 
 ## Heuristic tuning
 
-The backend includes a tuning script for empirically testing heuristic weights with mini-tournaments:
+The backend includes a tuning script for empirical heuristic tuning via repeated mini-tournaments.
+
+British 8x8 example:
 
 ```bash
 venv\Scripts\python.exe backend\bench\tune_heuristic.py --board-size 8 --depth 6 --games 20 --trials 100 --randomize-plies 4 --print-best
 ```
 
-International (10x10) example (time-budgeted via iterative deepening):
+International 10x10 example with iterative deepening:
+
 ```bash
 venv\Scripts\python.exe backend\bench\tune_heuristic.py --board-size 10 --iterative-deepening --time-limit-ms 1000 --depth 12 --games 20 --trials 100 --randomize-plies 4 --print-best
 ```
 
-The script prints a Python snippet for `_PROFILE_8` / `_PROFILE_10` that you can paste into the heuristic profile module under `backend/ai/`.
+The script prints a Python snippet for `_PROFILE_8` or `_PROFILE_10` that can be pasted into the heuristic profile module under `backend/ai/`.
 
 ## Notes
 
-- The backend assigns each browser session its own game state and persists local runtime state for recovery after restart.
-- The project is designed as an experimentation environment rather than a production service.
+- Each browser session gets its own `GameSession`, and local runtime state is persisted for recovery after restart.
+- The repository is intended as a coursework and experimentation environment rather than a production deployment target.
+- Generated outputs under `output/` and runtime state under `.runtime/` are ignored by git.
